@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>分帳系統 FINAL（穩定無碎帳版）</title>
+<title>分帳系統（順序付款版）</title>
 
 <style>
 body{
@@ -42,13 +42,13 @@ select{
 
 <body>
 
-<h2>🏦 BOSS 分帳 FINAL（穩定版 / 無碎帳）</h2>
+<h2>🏦 分帳系統（A→B→C 順序付款版）</h2>
 
-<h3>👥 玩家名單（每行一個）</h3>
+<h3>👥 玩家</h3>
 <textarea id="players" rows="5"></textarea><br>
 <button onclick="setPlayers()">更新玩家</button>
 
-<h3>📦 結標輸入</h3>
+<h3>📦 結標</h3>
 
 <table>
 <thead>
@@ -70,19 +70,19 @@ select{
 
 let P = [];
 
-/* =========================
+/* =====================
    玩家更新
-========================= */
+===================== */
 function setPlayers(){
   P = document.getElementById("players")
     .value.split("\n")
-    .map(x => x.trim())
-    .filter(x => x);
+    .map(x=>x.trim())
+    .filter(x=>x);
 }
 
-/* =========================
+/* =====================
    新增列
-========================= */
+===================== */
 function addRow(){
 
   let tr = document.createElement("tr");
@@ -91,7 +91,7 @@ function addRow(){
     <td><input></td>
     <td>
       <select>
-        ${P.map(p => `<option value="${p}">${p}</option>`).join("")}
+        ${P.map(p=>`<option value="${p}">${p}</option>`).join("")}
       </select>
     </td>
     <td><input type="number"></td>
@@ -100,41 +100,39 @@ function addRow(){
   document.getElementById("rows").appendChild(tr);
 }
 
-/* =========================
-   讀取資料
-========================= */
+/* =====================
+   讀資料
+===================== */
 function getData(){
 
-  let data = [];
+  let d=[];
 
   document.querySelectorAll("#rows tr").forEach(r=>{
     let item = r.children[0].querySelector("input").value;
-    let winner = r.children[1].querySelector("select").value;
-    let amount = Number(r.children[2].querySelector("input").value);
+    let w = r.children[1].querySelector("select").value;
+    let a = Number(r.children[2].querySelector("input").value);
 
-    if(item && winner && amount){
-      data.push({item, winner, amount});
+    if(item && w && a){
+      d.push({winner:w, amount:a});
     }
   });
 
-  return data;
+  return d;
 }
 
-/* =========================
-   GAS 原始核心（完全保留）
-========================= */
+/* =====================
+   GAS net 核心（不動）
+===================== */
 function calcNet(data){
 
-  let income = {};
-  let spend = {};
+  let income={}, spend={};
 
   P.forEach(p=>{
-    income[p] = 0;
-    spend[p] = 0;
+    income[p]=0;
+    spend[p]=0;
   });
 
   data.forEach(d=>{
-
     let n = P.length - 1;
     let share = d.amount / n;
 
@@ -147,7 +145,7 @@ function calcNet(data){
     });
   });
 
-  let net = {};
+  let net={};
 
   P.forEach(p=>{
     net[p] = income[p] - spend[p];
@@ -156,62 +154,74 @@ function calcNet(data){
   return net;
 }
 
-/* =========================
-   🔥 修正版轉帳矩陣（消除碎帳）
-   核心：bucket matching + sort + merge
-========================= */
+/* =====================
+   🔥 順序付款核心（你要的版本）
+===================== */
 function buildMatrix(net){
+
+  const MIN = 50;
 
   let creditors = [];
   let debtors = [];
 
-  P.forEach(p=>{
-    if(net[p] > 0) creditors.push([p, net[p]]);
-    if(net[p] < 0) debtors.push([p, -net[p]]);
+  P.forEach((p, idx)=>{
+    let v = Math.round(net[p] * 100) / 100;
+
+    if(v > 0) creditors.push({p, amt:v});
+    if(v < 0) debtors.push({p, amt:-v, idx});
   });
 
-  // 🔥 重要：排序（避免碎帳）
-  creditors.sort((a,b)=>b[1]-a[1]);
-  debtors.sort((a,b)=>b[1]-a[1]);
+  // 收款人：大額優先
+  creditors.sort((a,b)=>b.amt-a.amt);
+
+  // 付款人：A→B→C 順序
+  debtors.sort((a,b)=>P.indexOf(a.p)-P.indexOf(b.p));
 
   let res = [];
 
-  let i = 0;
-  let j = 0;
+  let ci = 0;
+  let di = 0;
 
-  while(i < creditors.length && j < debtors.length){
+  while(ci < creditors.length && di < debtors.length){
 
-    let cName = creditors[i][0];
-    let cAmt = creditors[i][1];
+    let c = creditors[ci];
+    let d = debtors[di];
 
-    let dName = debtors[j][0];
-    let dAmt = debtors[j][1];
+    let pay = Math.min(c.amt, d.amt);
 
-    let pay = Math.min(cAmt, dAmt);
-
-    if(pay > 0){
-
-      res.push({
-        from: dName,
-        to: cName,
-        amount: Math.round(pay * 100) / 100
-      });
-
-      creditors[i][1] -= pay;
-      debtors[j][1] -= pay;
+    if(pay <= 0){
+      di++;
+      continue;
     }
 
-    if(creditors[i][1] === 0) i++;
-    if(debtors[j][1] === 0) j++;
+    // 🔥 小額限制（避免碎帳）
+    let hasMore = (ci < creditors.length - 1 || di < debtors.length - 1);
+
+    if(pay < MIN && hasMore){
+      di++;
+      continue;
+    }
+
+    res.push({
+      from: d.p,
+      to: c.p,
+      amount: Math.round(pay * 100) / 100
+    });
+
+    c.amt -= pay;
+    d.amt -= pay;
+
+    if(c.amt < 0.01) ci++;
+    if(d.amt < 0.01) di++;
   }
 
   return res;
 }
 
-/* =========================
+/* =====================
    render
-========================= */
-function render(net, matrix){
+===================== */
+function render(net, res){
 
   let html = "<h3>📊 Net</h3><table>";
   html += "<tr><th>玩家</th><th>淨值</th></tr>";
@@ -222,11 +232,11 @@ function render(net, matrix){
 
   html += "</table>";
 
-  html += "<h3>💸 轉帳矩陣（已修正碎帳）</h3><table>";
+  html += "<h3>💸 轉帳明細（順序付款版）</h3><table>";
   html += "<tr><th>From</th><th>To</th><th>Amount</th></tr>";
 
-  matrix.forEach(m=>{
-    html += `<tr><td>${m.from}</td><td>${m.to}</td><td>${m.amount}</td></tr>`;
+  res.forEach(r=>{
+    html += `<tr><td>${r.from}</td><td>${r.to}</td><td>${r.amount}</td></tr>`;
   });
 
   html += "</table>";
@@ -234,14 +244,14 @@ function render(net, matrix){
   document.getElementById("out").innerHTML = html;
 }
 
-/* =========================
+/* =====================
    main
-========================= */
+===================== */
 function calc(){
   let data = getData();
   let net = calcNet(data);
-  let matrix = buildMatrix(net);
-  render(net, matrix);
+  let res = buildMatrix(net);
+  render(net, res);
 }
 
 </script>

@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳系統V03</title>
+<title>BOSS 分帳系統 V5</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -48,7 +48,7 @@ th, td {
 }
 
 #reportArea th {
-  background:#7a7a7a;
+  background:#6f6f6f;
   color:#111;
 }
 
@@ -60,7 +60,7 @@ th, td {
 
 <body>
 
-<h2>🏦 BOSS 分帳測試01</h2>
+<h2>🏦 BOSS 分帳系統 V5</h2>
 
 <textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
 <button onclick="setPlayers()">更新玩家</button>
@@ -80,12 +80,13 @@ th, td {
 <script>
 
 /* =========================
-   STATE
+   STATE（鎖定順序）
 ========================= */
 let players = [];
+let orderedPlayers = [];
 
 /* =========================
-   玩家更新
+   更新玩家（固定順序）
 ========================= */
 function setPlayers() {
 
@@ -94,11 +95,13 @@ function setPlayers() {
     .map(x => x.trim())
     .filter(x => x);
 
+  orderedPlayers = [...players]; // 🔒 鎖順序
+
   refreshAllSelects();
 }
 
 /* =========================
-   select 同步（安全版）
+   select 安全更新
 ========================= */
 function refreshAllSelects() {
 
@@ -108,10 +111,10 @@ function refreshAllSelects() {
 
     sel.innerHTML = `
       <option value="">請選擇得標者</option>
-      ${players.map(p => `<option value="${p}">${p}</option>`).join("")}
+      ${orderedPlayers.map(p => `<option value="${p}">${p}</option>`).join("")}
     `;
 
-    sel.value = players.includes(oldValue) ? oldValue : "";
+    sel.value = orderedPlayers.includes(oldValue) ? oldValue : "";
   });
 }
 
@@ -128,7 +131,7 @@ function addRow() {
     <td>
       <select>
         <option value="">請選擇得標者</option>
-        ${players.map(p => `<option value="${p}">${p}</option>`).join("")}
+        ${orderedPlayers.map(p => `<option value="${p}">${p}</option>`).join("")}
       </select>
     </td>
 
@@ -164,38 +167,63 @@ function buildLedger() {
 }
 
 /* =========================
+   🔥 尾差吸收分配（重點修正）
+========================= */
+function distribute(amount, winner, players) {
+
+  const others = players.filter(p => p !== winner);
+
+  const base = Math.floor(amount / others.length);
+  let remainder = amount % others.length;
+
+  let result = {};
+
+  others.forEach((p, i) => {
+
+    result[p] = base;
+
+    // 🔥 尾差吸收（避免碎帳）
+    if (i === others.length - 1) {
+      result[p] += remainder;
+    }
+  });
+
+  return result;
+}
+
+/* =========================
    Settlement
 ========================= */
 function settle(ledger) {
 
   let spend = {}, income = {};
 
-  players.forEach(p => {
+  orderedPlayers.forEach(p => {
     spend[p] = 0;
     income[p] = 0;
   });
 
   ledger.forEach(l => spend[l.winner] += l.amount);
 
-  const div = players.length - 1;
-
   ledger.forEach(l => {
 
-    const share = Math.floor(l.amount / div);
-    const rem = l.amount - share * div;
+    const dist = distribute(l.amount, l.winner, orderedPlayers);
 
-    players.forEach(p => {
-      if (p !== l.winner) income[p] += share;
+    orderedPlayers.forEach(p => {
+      if (p !== l.winner) {
+        income[p] += dist[p] || 0;
+      }
     });
 
-    income[l.winner] += rem;
   });
 
   let bal = {};
-  players.forEach(p => bal[p] = income[p] - spend[p]);
+  orderedPlayers.forEach(p => {
+    bal[p] = income[p] - spend[p];
+  });
 
-  let creditors = players.filter(p => bal[p] > 0);
-  let debtors = players.filter(p => bal[p] < 0);
+  let creditors = orderedPlayers.filter(p => bal[p] > 0);
+  let debtors = orderedPlayers.filter(p => bal[p] < 0);
 
   let transfers = [];
 
@@ -219,7 +247,7 @@ function settle(ledger) {
 }
 
 /* =========================
-   optimizer（穩定合併）
+   optimize（合併轉帳）
 ========================= */
 function optimize(transfers) {
 
@@ -230,25 +258,21 @@ function optimize(transfers) {
     map[k] = (map[k] || 0) + t.amount;
   });
 
-  let result = [];
-
-  Object.keys(map).forEach(k => {
+  return Object.keys(map).map(k => {
     let [from, to] = k.split("->");
-    result.push({ from, to, amount: map[k] });
+    return { from, to, amount: map[k] };
   });
-
-  return result;
 }
 
 /* =========================
-   UI RENDER（核心修正完成版）
+   UI render（穩定矩陣）
 ========================= */
 function render(spend, income, transfers) {
 
   let html = `<h3>📊 結算</h3><table>
   <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>`;
 
-  players.forEach(p => {
+  orderedPlayers.forEach(p => {
     html += `<tr>
       <td>${p}</td>
       <td>${spend[p]}</td>
@@ -260,34 +284,32 @@ function render(spend, income, transfers) {
   html += "</table>";
 
   /* =========================
-     MATRIX（完全穩定版）
+     MATRIX（完全固定順序）
   ========================= */
 
   let map = {};
 
-  // 🔥 UI結構完全固定 players
-  players.forEach(r => {
-    players.forEach(p => {
-      map[r + "->" + p] = "";
+  orderedPlayers.forEach(r => {
+    orderedPlayers.forEach(p => {
+      map[`${r}->${p}`] = "";
     });
   });
 
-  // 填入轉帳
   transfers.forEach(t => {
-    map[t.from + "->" + t.to] = t.amount;
+    map[`${t.from}->${t.to}`] = t.amount;
   });
 
   html += `<h3>💸 轉帳明細</h3><table><tr><th></th>`;
 
-  players.forEach(p => html += `<th>${p}</th>`);
+  orderedPlayers.forEach(p => html += `<th>${p}</th>`);
   html += "</tr>";
 
-  players.forEach(r => {
+  orderedPlayers.forEach(r => {
 
     html += `<tr><th>${r}</th>`;
 
-    players.forEach(p => {
-      html += `<td>${map[r + "->" + p] || ""}</td>`;
+    orderedPlayers.forEach(p => {
+      html += `<td>${map[`${r}->${p}`] || ""}</td>`;
     });
 
     html += "</tr>";

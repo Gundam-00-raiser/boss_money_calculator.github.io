@@ -2,69 +2,67 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>破天分帳計算機</title>
+<title>BOSS分帳</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <style>
-body{
+body {
   font-family: Arial;
   background:#121212;
   color:#fff;
   padding:20px;
 }
 
-textarea,input,select,button{
+h2,h3 { margin-top:20px; }
+
+textarea, input, select, button {
   padding:6px;
   margin:4px;
 }
 
-table{
-  border-collapse: collapse;
+table {
   width:100%;
+  border-collapse: collapse;
   margin-top:10px;
   background:#1f1f1f;
 }
 
-th,td{
+th, td {
   border:1px solid #444;
   padding:8px;
   text-align:center;
 }
 
-th{background:#2a2a2a;}
+th { background:#2a2a2a; }
 
-button{cursor:pointer;}
-
-.error{
-  border:2px solid red !important;
-  background:#3a0000;
+button {
+  cursor:pointer;
 }
 
-#msg{
-  margin:10px 0;
-  padding:10px;
-  background:#222;
-  border-left:4px solid #00d4ff;
+#reportArea table {
+  background:white;
+  color:black;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🔥破天分帳計算機</h2>
+<h2>🔥 BOSS 分帳系統 </h2>
 
-<!-- 玩家 -->
-<h3>👥 玩家資料庫</h3>
-<textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
-<button onclick="updatePlayers()">更新玩家</button>
+<!-- ===================== -->
+<!-- 👥 玩家資料庫 -->
+<!-- ===================== -->
+<h3>👥 玩家資料</h3>
 
-<!-- 訊息 -->
-<div id="msg">📌 等待操作</div>
+<textarea id="playerPool" rows="6" placeholder="A&#10;B&#10;C&#10;D"></textarea>
 
-<hr>
+<button onclick="updatePlayers()">更新玩家名單</button>
 
-<!-- 表格 -->
+<!-- ===================== -->
+<!-- 📦 競標表 -->
+<!-- ===================== -->
 <h3>📦 競標資料</h3>
 
 <table>
@@ -85,261 +83,152 @@ button{cursor:pointer;}
 
 <hr>
 
+<!-- ===================== -->
+<!-- 📊 結果 -->
+<!-- ===================== -->
 <div id="reportArea"></div>
 
 <script>
 
-let players=[];
+// =====================
+// 全域玩家池
+// =====================
+let players = [];
 
 // =====================
-// 訊息顯示
+// 更新玩家池
 // =====================
-function showMsg(text,color="#00d4ff"){
-  const msg=document.getElementById("msg");
-  msg.innerText=text;
-  msg.style.borderLeftColor=color;
-}
-
-// =====================
-// 玩家更新
-// =====================
-function updatePlayers(){
-  players=document.getElementById("playerPool")
+function updatePlayers() {
+  players = document.getElementById("playerPool")
     .value.split("\n")
-    .map(x=>x.trim())
-    .filter(x=>x);
-
-  if(players.length<2){
-    showMsg("⚠ 玩家至少需要 2 人","#ff5555");
-  }else{
-    showMsg("✔ 玩家已更新");
-  }
+    .map(x => x.trim())
+    .filter(x => x);
 
   refreshDropdowns();
 }
 
 // =====================
-// 下拉更新
+// 更新所有下拉選單
 // =====================
-function refreshDropdowns(){
-  document.querySelectorAll(".playerSelect").forEach(sel=>{
-    const current=sel.value;
+function refreshDropdowns() {
+  document.querySelectorAll(".playerSelect").forEach(sel => {
+    const current = sel.value;
 
-    sel.innerHTML=players.map(p=>
+    sel.innerHTML = players.map(p =>
       `<option value="${p}">${p}</option>`
     ).join("");
 
-    if(players.includes(current)) sel.value=current;
+    if (players.includes(current)) sel.value = current;
   });
 }
 
 // =====================
 // 新增列
 // =====================
-function addRow(){
-  const tbody=document.getElementById("tableBody");
+function addRow() {
+  const tbody = document.getElementById("tableBody");
 
-  const row=document.createElement("tr");
+  const row = document.createElement("tr");
 
-  row.innerHTML=`
+  row.innerHTML = `
     <td><input></td>
+
     <td>
       <select class="playerSelect">
-        ${players.map(p=>`<option value="${p}">${p}</option>`).join("")}
+        ${players.map(p => `<option value="${p}">${p}</option>`).join("")}
       </select>
     </td>
+
     <td><input type="number"></td>
+
     <td><button onclick="this.parentElement.parentElement.remove()">刪除</button></td>
   `;
 
   tbody.appendChild(row);
 }
 
+// 初始化一列
 addRow();
 
 // =====================
-// 防呆檢查
+// 計算核心
 // =====================
-function validate(){
+function calculate() {
 
-  let ok=true;
-
-  document.querySelectorAll("#tableBody tr").forEach(row=>{
-
-    const item=row.children[0].querySelector("input");
-    const amount=row.children[2].querySelector("input");
-
-    item.classList.remove("error");
-    amount.classList.remove("error");
-
-    if(!item.value){
-      item.classList.add("error");
-      ok=false;
-    }
-
-    if(!amount.value || isNaN(Number(amount.value))){
-      amount.classList.add("error");
-      ok=false;
-    }
-  });
-
-  return ok;
-}
-
-// =====================
-// 計算（安全版）
-// =====================
-function calculate(){
-
-  if(players.length<2){
-    showMsg("⚠ 玩家不足 2 人","#ff5555");
+  if (players.length < 2) {
+    alert("至少需要2位玩家");
     return;
   }
 
-  if(!validate()){
-    showMsg("⚠ 請修正紅色錯誤欄位","#ff5555");
-    return;
-  }
+  let data = [];
 
-  let data=[];
+  document.querySelectorAll("#tableBody tr").forEach(row => {
 
-  document.querySelectorAll("#tableBody tr").forEach(row=>{
-    const item=row.children[0].querySelector("input").value;
-    const winner=row.children[1].querySelector("select").value;
-    const amount=Number(row.children[2].querySelector("input").value);
+    const item = row.children[0].querySelector("input").value;
+    const winner = row.children[1].querySelector("select").value;
+    const amount = Number(row.children[2].querySelector("input").value);
 
-    if(item && winner && amount){
-      data.push([item,winner,amount]);
+    if (item && winner && amount) {
+      data.push([item, winner, amount]);
     }
   });
 
-  if(data.length===0){
-    showMsg("⚠ 沒有有效資料","#ff5555");
-    return;
-  }
-
-  let spend={},income={};
-  players.forEach(p=>{
-    spend[p]=0;
-    income[p]=0;
+  let spend = {}, income = {};
+  players.forEach(p => {
+    spend[p] = 0;
+    income[p] = 0;
   });
 
-  data.forEach(r=>{
-    spend[r[1]]+=r[2];
+  // 支出
+  data.forEach(r => {
+    spend[r[1]] += r[2];
   });
 
-  const divisor=players.length-1;
+  // 收入
+  data.forEach(r => {
+    const share = Math.floor(r[2] / (players.length - 1));
+    const remainder = r[2] - share * (players.length - 1);
 
-  data.forEach(r=>{
-    const share=Math.floor(r[2]/divisor);
-    const remainder=r[2]-share*divisor;
-
-    players.forEach(p=>{
-      if(p!==r[1]) income[p]+=share;
+    players.forEach(p => {
+      if (p !== r[1]) income[p] += share;
     });
 
-    income[r[1]]+=remainder;
+    income[r[1]] += remainder;
   });
 
-  let balances={};
-  players.forEach(p=>{
-    balances[p]=income[p]-spend[p];
-  });
-
-  let creditors=players.filter(p=>balances[p]>0);
-  let debtors=players.filter(p=>balances[p]<0);
-
-  let transfers=[];
-
-  while(creditors.length && debtors.length){
-
-    let c=creditors[0];
-    let d=debtors[0];
-
-    let pay=Math.min(balances[c],-balances[d]);
-
-    if(pay<50){
-      if(!(creditors.length===1 && debtors.length===1)){
-        debtors.push(debtors.shift());
-        continue;
-      }
-    }
-
-    transfers.push({from:d,to:c,amount:pay});
-
-    balances[c]-=pay;
-    balances[d]+=pay;
-
-    if(balances[c]===0) creditors.shift();
-    if(balances[d]===0) debtors.shift();
-  }
-
-  document.getElementById("reportArea").innerHTML = buildMatrix(transfers);
-
-  showMsg("✔ 計算完成");
-}
-
-// =====================
-// 矩陣輸出
-// =====================
-function buildMatrix(transfers){
-
-  let payersSet=new Set();
-  let receiversSet=new Set();
-
-  transfers.forEach(t=>{
-    payersSet.add(t.from);
-    receiversSet.add(t.to);
-  });
-
-  let payers=[...payersSet];
-  let receivers=[...receiversSet];
-
-  let matrix={};
-
-  receivers.forEach(r=>{
-    matrix[r]={};
-    payers.forEach(p=>matrix[r][p]="");
-  });
-
-  transfers.forEach(t=>{
-    matrix[t.to][t.from]=t.amount;
-  });
-
-  let html=`
-    <h3>💸 分帳矩陣</h3>
-    <table>
-      <tr>
-        <th>收款人 / 付款人</th>
-        ${payers.map(p=>`<th>${p}</th>`).join("")}
-      </tr>
+  // =====================
+  // 輸出報表
+  // =====================
+  let html = `
+  <h3>📊 結算報表</h3>
+  <table>
+  <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>
   `;
 
-  receivers.forEach(r=>{
-    html+=`<tr><th>${r}</th>`;
-    payers.forEach(p=>{
-      html+=`<td>${matrix[r][p]||""}</td>`;
-    });
-    html+=`</tr>`;
+  players.forEach(p => {
+    const net = income[p] - spend[p];
+    html += `<tr><td>${p}</td><td>${spend[p]}</td><td>${income[p]}</td><td>${net}</td></tr>`;
   });
 
-  html+=`</table>`;
+  html += "</table>";
 
-  return html;
+  document.getElementById("reportArea").innerHTML = html;
 }
 
 // =====================
-// 圖片
+// 📸 產圖
 // =====================
-function exportImage(){
-  html2canvas(document.getElementById("reportArea"),{
-    backgroundColor:"#fff",
-    scale:2
-  }).then(canvas=>{
-    const a=document.createElement("a");
-    a.download="boss-matrix.png";
-    a.href=canvas.toDataURL();
-    a.click();
+function exportImage() {
+  const target = document.getElementById("reportArea");
+
+  html2canvas(target, {
+    backgroundColor: "#ffffff",
+    scale: 2
+  }).then(canvas => {
+    const link = document.createElement("a");
+    link.download = "boss-report.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   });
 }
 

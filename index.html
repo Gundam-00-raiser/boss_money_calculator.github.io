@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳明細 v10</title>
+<title>BOSS 分帳系統 v12</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -60,7 +60,7 @@ th, td {
 
 <body>
 
-<h2>🏦 BOSS 分帳系統 v10</h2>
+<h2>🏦 BOSS 分帳系統 v12</h2>
 
 <textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
 <button onclick="setPlayers()">更新玩家</button>
@@ -101,7 +101,7 @@ function setPlayers() {
 }
 
 /* =========================
-   dropdown更新
+   dropdown
 ========================= */
 function refreshSelects() {
 
@@ -164,16 +164,13 @@ function buildLedger() {
 }
 
 /* =========================
-   NET CALC（穩定版）
+   🔥 v12 NET ENGINE（唯一正確）
 ========================= */
 function computeNet(ledger) {
 
-  let spend = {}, income = {};
+  let spend = {};
 
-  orderedPlayers.forEach(p => {
-    spend[p] = 0;
-    income[p] = 0;
-  });
+  orderedPlayers.forEach(p => spend[p] = 0);
 
   ledger.forEach(l => {
     spend[l.winner] += l.amount;
@@ -182,27 +179,19 @@ function computeNet(ledger) {
   const total = ledger.reduce((s, l) => s + l.amount, 0);
   const n = orderedPlayers.length;
 
-  const base = total / n;
-
-  orderedPlayers.forEach(p => {
-    income[p] = base;
-  });
-
-  ledger.forEach(l => {
-    income[l.winner] += l.amount / n;
-  });
+  const fairShare = total / n;
 
   let net = {};
 
   orderedPlayers.forEach(p => {
-    net[p] = income[p] - spend[p];
+    net[p] = parseFloat((fairShare - spend[p]).toFixed(2));
   });
 
-  return { spend, income, net };
+  return { spend, net };
 }
 
 /* =========================
-   轉帳生成
+   TRANSFER ENGINE（穩定版）
 ========================= */
 function buildTransfers(net) {
 
@@ -223,6 +212,7 @@ function buildTransfers(net) {
 
     let pay = Math.min(c.v, d.v);
 
+    // 防碎策略
     if (pay < 50 && creditors.length > 1 && debtors.length > 1) {
       creditors.push(creditors.shift());
       continue;
@@ -245,46 +235,32 @@ function buildTransfers(net) {
 }
 
 /* =========================
-   🔥 ACTIVE PLAYERS（重點修正）
-   只顯示有金流的人
+   ACTIVE MATRIX（精簡）
 ========================= */
-function getActivePlayers(spend, income) {
+function getActivePlayers(net) {
 
-  let set = new Set();
-
-  orderedPlayers.forEach(p => {
-
-    if (spend[p] > 0) set.add(p);
-    if (income[p] > 0) set.add(p);
-  });
-
-  return [...set];
+  return orderedPlayers.filter(p => Math.abs(net[p]) > 0.01);
 }
 
 /* =========================
-   RENDER（精簡矩陣版）
+   RENDER
 ========================= */
-function render(spend, income, net, transfers) {
+function render(spend, net, transfers) {
 
   let html = `<h3>📊 結算</h3><table>
-  <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>`;
+  <tr><th>玩家</th><th>支出</th><th>淨值</th></tr>`;
 
   orderedPlayers.forEach(p => {
     html += `<tr>
       <td>${p}</td>
       <td>${spend[p]}</td>
-      <td>${income[p]}</td>
-      <td>${net[p].toFixed(2)}</td>
+      <td>${net[p]}</td>
     </tr>`;
   });
 
   html += "</table>";
 
-  /* =========================
-     MATRIX（已精簡）
-  ========================= */
-
-  const activePlayers = getActivePlayers(spend, income);
+  const activePlayers = getActivePlayers(net);
 
   let map = {};
 
@@ -298,19 +274,16 @@ function render(spend, income, net, transfers) {
     map[`${t.from}->${t.to}`] = t.amount;
   });
 
-  html += `<h3>💸 轉帳明細（精簡版）</h3><table><tr><th></th>`;
+  html += `<h3>💸 轉帳明細</h3><table><tr><th></th>`;
 
   activePlayers.forEach(p => html += `<th>${p}</th>`);
   html += "</tr>";
 
   activePlayers.forEach(r => {
-
     html += `<tr><th>${r}</th>`;
-
     activePlayers.forEach(p => {
       html += `<td>${map[`${r}->${p}`] || ""}</td>`;
     });
-
     html += "</tr>";
   });
 
@@ -326,11 +299,11 @@ function run() {
 
   const ledger = buildLedger();
 
-  const { spend, income, net } = computeNet(ledger);
+  const { spend, net } = computeNet(ledger);
 
   const transfers = buildTransfers(net);
 
-  render(spend, income, net, transfers);
+  render(spend, net, transfers);
 }
 
 /* =========================
@@ -347,7 +320,7 @@ function exportImage() {
 
     let a = document.createElement("a");
     a.href = canvas.toDataURL("image/png");
-    a.download = "boss_matrix.png";
+    a.download = "boss_v12.png";
     a.click();
   });
 }

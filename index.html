@@ -2,68 +2,191 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳計算機</title>
+<title>BOSS 分帳系統</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
 <style>
-  body { font-family: Arial; padding: 20px; background:#1e1e1e; color:#fff; }
-  textarea, input { width: 100%; margin-bottom:10px; }
-  button { padding:10px 20px; font-size:16px; }
-  table { border-collapse: collapse; margin-top:20px; }
-  td, th { border:1px solid #555; padding:8px; text-align:center; }
+  body {
+    font-family: Arial;
+    background:#1e1e1e;
+    color:#fff;
+    padding:20px;
+  }
+
+  input, select, button {
+    padding:6px;
+    margin:4px;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top:10px;
+    background:#2a2a2a;
+  }
+
+  th, td {
+    border:1px solid #555;
+    padding:8px;
+    text-align:center;
+  }
+
+  th {
+    background:#333;
+  }
+
+  button {
+    cursor:pointer;
+  }
+
+  #reportArea table {
+    background:white;
+    color:black;
+  }
 </style>
 </head>
+
 <body>
 
-<h2>🔥 BOSS 分帳計算機</h2>
+<h2>🔥 BOSS 分帳系統（網頁版）</h2>
 
-<h3>👥 玩家（用逗號分隔）</h3>
-<input id="players" placeholder="A,B,C,D">
+<!-- 玩家 -->
+<h3>👥 玩家（逗號分隔）</h3>
+<input id="playersInput" placeholder="A,B,C,D" oninput="updatePlayers()">
 
-<h3>📦 競標資料（每行：物品,得標者,金額）</h3>
-<textarea id="data" rows="6" placeholder="劍,A,1000&#10;盾,B,500"></textarea>
+<!-- 表格 -->
+<h3>📦 競標表</h3>
 
-<button onclick="calculate()">開始計算</button>
+<table id="bidTable">
+  <thead>
+    <tr>
+      <th>物品</th>
+      <th>得標者</th>
+      <th>金額</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
 
-<div id="result"></div>
+<button onclick="addRow()">➕ 新增列</button>
+<button onclick="calculate()">🧮 計算</button>
+<button onclick="exportImage()">📸 產生圖片</button>
+
+<hr>
+
+<!-- 結果 -->
+<div id="reportArea"></div>
 
 <script>
+let players = [];
+
+function updatePlayers() {
+  players = document.getElementById("playersInput")
+    .value.split(",")
+    .map(x => x.trim())
+    .filter(x => x);
+
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = "";
+  addRow();
+}
+
+function addRow() {
+  const tbody = document.getElementById("tableBody");
+
+  const row = document.createElement("tr");
+
+  row.innerHTML = `
+    <td><input></td>
+    <td>
+      <select>
+        ${players.map(p => `<option value="${p}">${p}</option>`).join("")}
+      </select>
+    </td>
+    <td><input type="number"></td>
+    <td><button onclick="this.parentElement.parentElement.remove()">刪除</button></td>
+  `;
+
+  tbody.appendChild(row);
+}
+
+// =====================
+// 計算核心（你的邏輯）
+// =====================
 function calculate() {
-  const players = document.getElementById("players").value.split(",").map(x=>x.trim()).filter(x=>x);
-  const raw = document.getElementById("data").value.split("\n").filter(x=>x);
 
   if (players.length < 2) {
-    alert("至少需要2位玩家");
+    alert("至少需要 2 位玩家");
     return;
   }
 
-  let data = raw.map(line => {
-    const [item, winner, amount] = line.split(",");
-    return [item, winner, Number(amount)];
+  let data = [];
+
+  document.querySelectorAll("#tableBody tr").forEach(row => {
+    const item = row.children[0].querySelector("input").value;
+    const winner = row.children[1].querySelector("select").value;
+    const amount = Number(row.children[2].querySelector("input").value);
+
+    if (item && winner && amount) {
+      data.push([item, winner, amount]);
+    }
   });
 
   let spend = {}, income = {};
-  players.forEach(p => { spend[p]=0; income[p]=0; });
+  players.forEach(p => {
+    spend[p] = 0;
+    income[p] = 0;
+  });
 
   // 支出
-  data.forEach(r=>{
-    if (spend[r[1]] !== undefined) spend[r[1]] += r[2];
+  data.forEach(r => {
+    spend[r[1]] += r[2];
   });
 
   // 收入
-  data.forEach(r=>{
-    const winner = r[1];
-    const amount = r[2];
+  data.forEach(r => {
+    const share = Math.floor(r[2] / (players.length - 1));
+    const remainder = r[2] - share * (players.length - 1);
 
-    const share = Math.floor(amount / (players.length - 1));
-    const remainder = amount - share * (players.length - 1);
-
-    players.forEach(p=>{
-      if(p!==winner) income[p]+=share;
+    players.forEach(p => {
+      if (p !== r[1]) income[p] += share;
     });
 
-    income[winner]+=remainder;
+    income[r[1]] += remainder;
   });
 
-  // 淨值
+  let html = `
+  <h3 id="captureArea">📊 結算報表</h3>
+  <table>
+    <tr>
+      <th>玩家</th>
+      <th>支出</th>
+      <th>收入</th>
+      <th>淨值</th>
+    </tr>
+  `;
+
+  players.forEach(p => {
+    const net = income[p] - spend[p];
+    html += `
+      <tr>
+        <td>${p}</td>
+        <td>${spend[p]}</td>
+        <td>${income[p]}</td>
+        <td>${net}</td>
+      </tr>
+    `;
+  });
+
+  html += "</table>";
+
+  // 轉帳
   let balances = {};
   players.forEach(p => balances[p] = income[p] - spend[p]);
 
@@ -87,34 +210,40 @@ function calculate() {
 
     transfers.push({from:d,to:c,amount:pay});
 
-    balances[c]-=pay;
-    balances[d]+=pay;
+    balances[c] -= pay;
+    balances[d] += pay;
 
-    if (balances[c]===0) creditors.shift();
-    if (balances[d]===0) debtors.shift();
+    if (balances[c] === 0) creditors.shift();
+    if (balances[d] === 0) debtors.shift();
   }
 
-  render(players, spend, income, transfers);
-}
-
-function render(players, spend, income, transfers) {
-  let html = "<h3>📊 收支</h3><table><tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>";
-
-  players.forEach(p=>{
-    const net = income[p]-spend[p];
-    html += `<tr><td>${p}</td><td>${spend[p]}</td><td>${income[p]}</td><td>${net}</td></tr>`;
-  });
-
-  html += "</table>";
-
-  html += "<h3>💸 轉帳</h3><ul>";
-  transfers.forEach(t=>{
+  html += "<h3>💸 轉帳明細</h3><ul>";
+  transfers.forEach(t => {
     html += `<li>${t.from} → ${t.to} ${t.amount}</li>`;
   });
   html += "</ul>";
 
-  document.getElementById("result").innerHTML = html;
+  document.getElementById("reportArea").innerHTML = html;
 }
+
+// =====================
+// 📸 產圖功能
+// =====================
+function exportImage() {
+  const target = document.getElementById("reportArea");
+
+  html2canvas(target, {
+    backgroundColor: "#ffffff"
+  }).then(canvas => {
+    const link = document.createElement("a");
+    link.download = "boss-report.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  });
+}
+
+// 初始化
+renderTable();
 </script>
 
 </body>

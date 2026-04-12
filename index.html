@@ -2,9 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳 v13（穩定矩陣版）</title>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<title>BOSS 分帳 v17（合併付款矩陣版）</title>
 
 <style>
 body {
@@ -31,308 +29,224 @@ th, td {
   text-align:center;
   min-width:80px;
 }
-
-h3 { margin-top:20px; }
-
-#report {
-  margin-top:20px;
-}
 </style>
 </head>
 
 <body>
 
-<h2>🏦 BOSS 分帳 v13（穩定矩陣版）</h2>
+<h2>🏦 BOSS 分帳 v17（合併清算版）</h2>
 
-<!-- 玩家 -->
-<h3>👥 玩家名單</h3>
-<textarea id="playersInput" rows="6" placeholder="A&#10;B&#10;C"></textarea>
-<br>
-<button onclick="updatePlayers()">更新玩家</button>
+<h3>👥 玩家</h3>
+<textarea id="playersInput"></textarea><br>
+<button onclick="updatePlayers()">更新</button>
 
-<!-- 結標 -->
 <h3>📦 結標</h3>
-
 <table>
 <thead>
-<tr>
-  <th>物品</th>
-  <th>得標者</th>
-  <th>金額</th>
-  <th>刪除</th>
-</tr>
+<tr><th>物品</th><th>得標者</th><th>金額</th><th></th></tr>
 </thead>
 <tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">新增列</button>
+<button onclick="addRow()">新增</button>
 <button onclick="calculate()">計算</button>
-
-<hr>
 
 <div id="report"></div>
 
 <script>
 
-let players = [];
+let players=[];
 
-/* =====================
-   更新玩家
-===================== */
-function updatePlayers() {
-
-  players = document.getElementById("playersInput")
-    .value.split("\n")
-    .map(x => x.trim())
-    .filter(x => x);
-
-  refreshDropdowns();
+function updatePlayers(){
+  players=document.getElementById("playersInput")
+  .value.split("\n").map(x=>x.trim()).filter(x=>x);
+  refresh();
 }
 
-/* =====================
-   dropdown
-===================== */
-function refreshDropdowns() {
-
-  document.querySelectorAll(".winner").forEach(sel => {
-
-    const old = sel.value;
-
-    sel.innerHTML =
-      `<option value="">選擇得標者</option>` +
-      players.map(p => `<option value="${p}">${p}</option>`).join("");
-
-    sel.value = players.includes(old) ? old : "";
+function refresh(){
+  document.querySelectorAll(".winner").forEach(sel=>{
+    let v=sel.value;
+    sel.innerHTML=`<option value="">選擇</option>`+
+    players.map(p=>`<option>${p}</option>`).join("");
+    if(players.includes(v)) sel.value=v;
   });
 }
 
-/* =====================
-   新增列
-===================== */
-function addRow() {
-
-  const tr = document.createElement("tr");
-
-  tr.innerHTML = `
-    <td><input></td>
-    <td>
-      <select class="winner">
-        <option value="">選擇得標者</option>
-        ${players.map(p => `<option value="${p}">${p}</option>`).join("")}
-      </select>
-    </td>
-    <td><input type="number"></td>
-    <td><button onclick="this.parentElement.parentElement.remove()">X</button></td>
+function addRow(){
+  let tr=document.createElement("tr");
+  tr.innerHTML=`
+  <td><input></td>
+  <td><select class="winner">${players.map(p=>`<option>${p}</option>`).join("")}</select></td>
+  <td><input type="number"></td>
+  <td><button onclick="this.parentElement.parentElement.remove()">X</button></td>
   `;
-
   document.getElementById("rows").appendChild(tr);
 }
-
 addRow();
 
-/* =====================
-   讀取資料
-===================== */
-function getData() {
+function getData(){
+  let d=[];
+  document.querySelectorAll("#rows tr").forEach(r=>{
+    let item=r.children[0].querySelector("input").value;
+    let w=r.children[1].querySelector("select").value;
+    let a=Number(r.children[2].querySelector("input").value);
+    if(item&&w&&a) d.push({item,winner:w,amount:a});
+  });
+  return d;
+}
 
-  let data = [];
+/* ======================
+   Ledger
+====================== */
+function computeLedger(data){
 
-  document.querySelectorAll("#rows tr").forEach(r => {
+  let income={},spend={};
+  players.forEach(p=>{income[p]=0;spend[p]=0});
 
-    const item = r.children[0].querySelector("input").value;
-    const winner = r.children[1].querySelector("select").value;
-    const amount = Number(r.children[2].querySelector("input").value);
+  data.forEach(d=>{
+    let n=players.length-1;
+    let share=Math.floor(d.amount/n);
+    let rem=d.amount-share*n;
 
-    if (item && winner && amount) {
-      data.push({ item, winner, amount });
+    spend[d.winner]+=d.amount;
+
+    players.forEach(p=>{
+      if(p!==d.winner) income[p]+=share;
+    });
+
+    // remainder 分配（集中給低收入）
+    let targets=players.filter(p=>p!==d.winner)
+    .sort((a,b)=>income[a]-income[b]);
+
+    let i=0;
+    while(rem>0 && i<targets.length){
+      let give=Math.min(rem,50);
+      if(give<50) give=rem;
+      income[targets[i]]+=give;
+      rem-=give;
+      i++;
     }
   });
 
-  return data;
+  let net={};
+  players.forEach(p=>net[p]=income[p]-spend[p]);
+
+  return {income,spend,net};
 }
 
-/* =====================
-   ledger（核心）
-===================== */
-function computeLedger(data) {
+/* ======================
+   🔥 合併付款矩陣
+====================== */
+function buildMatrix(net){
 
-  let income = {};
-  let spend = {};
+  let payers=players.filter(p=>net[p]<0);
+  let receivers=players.filter(p=>net[p]>0);
 
-  players.forEach(p => {
-    income[p] = 0;
-    spend[p] = 0;
+  // clone
+  let payLeft={};
+  let recLeft={};
+
+  payers.forEach(p=>payLeft[p]=-net[p]);
+  receivers.forEach(p=>recLeft[p]=net[p]);
+
+  // 排序（收款優先大額）
+  receivers.sort((a,b)=>recLeft[b]-recLeft[a]);
+
+  let matrix={};
+  players.forEach(r=>{
+    matrix[r]={};
+    players.forEach(c=>matrix[r][c]="");
   });
 
-  data.forEach(d => {
+  let payerIndex=0;
 
-    const n = players.length - 1;
-    const share = Math.floor(d.amount / n);
-    let remainder = d.amount - share * n;
+  receivers.forEach(r=>{
 
-    spend[d.winner] += d.amount;
+    let need=recLeft[r];
 
-    players.forEach(p => {
-      if (p !== d.winner) {
-        income[p] += share;
+    while(need>0){
+
+      let payer=payers[payerIndex % payers.length];
+
+      let available=payLeft[payer];
+
+      if(available<=0){
+        payerIndex++;
+        continue;
       }
-    });
 
-    distributeRemainder(d.winner, remainder, income);
-  });
+      let pay=Math.min(need, available);
 
-  let net = {};
-  players.forEach(p => {
-    net[p] = income[p] - spend[p];
-  });
+      // 🔥 最小50限制
+      if(pay<50 && need>50){
+        payerIndex++;
+        continue;
+      }
 
-  return { income, spend, net };
-}
+      matrix[r][payer]=(matrix[r][payer]||0)+pay;
 
-/* =====================
-   remainder（≥50）
-===================== */
-function distributeRemainder(winner, remainder, income) {
+      payLeft[payer]-=pay;
+      need-=pay;
 
-  if (remainder <= 0) return;
-
-  let targets = players
-    .filter(p => p !== winner)
-    .sort((a,b) => income[a] - income[b]);
-
-  let i = 0;
-
-  while (remainder > 0 && i < targets.length) {
-
-    let give = Math.min(50, remainder);
-
-    if (give < 50) {
-      // 最後不足50 → 丟給最後一人
-      give = remainder;
+      payerIndex++;
     }
-
-    income[targets[i]] += give;
-    remainder -= give;
-    i++;
-  }
-}
-
-/* =====================
-   🔥 transfer 重建（關鍵修復）
-===================== */
-function buildTransfers(data) {
-
-  let transfers = [];
-
-  const n = players.length - 1;
-
-  data.forEach(d => {
-
-    const share = Math.floor(d.amount / n);
-
-    players.forEach(p => {
-
-      if (p !== d.winner) {
-        transfers.push({
-          from: d.winner,
-          to: p,
-          amount: share
-        });
-      }
-    });
-  });
-
-  return transfers;
-}
-
-/* =====================
-   matrix
-===================== */
-function buildMatrix(transfers) {
-
-  let matrix = {};
-
-  players.forEach(r => {
-    matrix[r] = {};
-    players.forEach(c => {
-      matrix[r][c] = 0;
-    });
-  });
-
-  transfers.forEach(t => {
-    matrix[t.from][t.to] += t.amount;
   });
 
   return matrix;
 }
 
-/* =====================
-   主計算
-===================== */
-function calculate() {
+/* ======================
+   render
+====================== */
+function render(res,matrix){
 
-  if (players.length < 2) {
+  let html=`<h3>結算</h3><table>
+  <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>`;
+
+  players.forEach(p=>{
+    html+=`<tr>
+    <td>${p}</td>
+    <td>${res.spend[p]}</td>
+    <td>${res.income[p]}</td>
+    <td>${res.net[p]}</td>
+    </tr>`;
+  });
+
+  html+=`</table>`;
+
+  html+=`<h3>轉帳明細</h3><table><tr><th>收款人\\付款人</th>`;
+
+  players.forEach(p=>html+=`<th>${p}</th>`);
+  html+=`</tr>`;
+
+  players.forEach(r=>{
+    html+=`<tr><th>${r}</th>`;
+    players.forEach(c=>{
+      html+=`<td>${matrix[r][c]||""}</td>`;
+    });
+    html+=`</tr>`;
+  });
+
+  html+=`</table>`;
+
+  document.getElementById("report").innerHTML=html;
+}
+
+/* ======================
+   main
+====================== */
+function calculate(){
+
+  if(players.length<2){
     alert("玩家不足");
     return;
   }
 
-  const data = getData();
+  let data=getData();
+  let res=computeLedger(data);
+  let matrix=buildMatrix(res.net);
 
-  const ledger = computeLedger(data);
-
-  const transfers = buildTransfers(data);
-
-  const matrix = buildMatrix(transfers);
-
-  render(ledger, matrix);
-}
-
-/* =====================
-   render
-===================== */
-function render(ledger, matrix) {
-
-  let html = `
-  <h3>📊 結算結果</h3>
-  <table>
-  <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>
-  `;
-
-  players.forEach(p => {
-    html += `
-      <tr>
-        <td>${p}</td>
-        <td>${ledger.spend[p]}</td>
-        <td>${ledger.income[p]}</td>
-        <td>${ledger.net[p]}</td>
-      </tr>`;
-  });
-
-  html += "</table>";
-
-  // ===== matrix =====
-  html += `<h3>🔁 轉帳明細</h3><table><tr><th>收款人\\付款人</th>`;
-
-  players.forEach(p => {
-    html += `<th>${p}</th>`;
-  });
-
-  html += `</tr>`;
-
-  players.forEach(r => {
-
-    html += `<tr><th>${r}</th>`;
-
-    players.forEach(c => {
-      html += `<td>${matrix[r][c] || ""}</td>`;
-    });
-
-    html += `</tr>`;
-  });
-
-  html += `</table>`;
-
-  document.getElementById("report").innerHTML = html;
+  render(res,matrix);
 }
 
 </script>

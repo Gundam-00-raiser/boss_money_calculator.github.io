@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳計算機</title>
+<title>BOSS 分帳 v30 CLEAN</title>
 
 <style>
 body{
@@ -29,25 +29,21 @@ th,td{
   text-align:center;
 }
 
-th{
-  background:#2a2a2a;
-}
+th{background:#2a2a2a;}
 
-select{
-  padding:4px;
-}
+select{padding:4px;}
 </style>
 </head>
 
 <body>
 
-<h2>🏦 BOSS 分帳計算機（穩定版）</h2>
+<h2>🏦 BOSS 分帳 v30 CLEAN（修正版）</h2>
 
-<h3>👥 玩家名單（每行一個）</h3>
+<h3>👥 玩家</h3>
 <textarea id="players" rows="5"></textarea><br>
 <button onclick="setPlayers()">更新玩家</button>
 
-<h3>📦 結標輸入</h3>
+<h3>📦 結標</h3>
 
 <table>
 <thead>
@@ -70,36 +66,36 @@ select{
 
 let P = [];
 
-/* =========================
-   玩家更新 + 同步下拉
-========================= */
+/* =====================
+   玩家更新（修正UI）
+===================== */
 function setPlayers(){
   P = document.getElementById("players")
     .value.split("\n")
     .map(x => x.trim())
     .filter(x => x);
 
-  refreshSelects(); // ⭐ 關鍵修正
+  refreshSelects();
 }
 
-/* =========================
-   下拉同步更新（修正核心）
-========================= */
+/* =====================
+   修正 select 同步
+===================== */
 function refreshSelects(){
   document.querySelectorAll(".winner").forEach(sel=>{
-    let current = sel.value;
+    let cur = sel.value;
 
     sel.innerHTML = P.map(p => `<option value="${p}">${p}</option>`).join("");
 
-    if(P.includes(current)){
-      sel.value = current;
+    if(P.includes(cur)){
+      sel.value = cur;
     }
   });
 }
 
-/* =========================
+/* =====================
    新增列
-========================= */
+===================== */
 function addRow(){
 
   let tr = document.createElement("tr");
@@ -118,12 +114,12 @@ function addRow(){
   document.getElementById("rows").appendChild(tr);
 }
 
-/* =========================
+/* =====================
    讀資料
-========================= */
+===================== */
 function getData(){
 
-  let data = [];
+  let d = [];
 
   document.querySelectorAll("#rows tr").forEach(r=>{
     let item = r.children[0].querySelector("input").value;
@@ -131,16 +127,16 @@ function getData(){
     let a = Number(r.children[2].querySelector("input").value);
 
     if(item && w && a){
-      data.push({item, winner:w, amount:a});
+      d.push({item, winner:w, amount:a});
     }
   });
 
-  return data;
+  return d;
 }
 
-/* =========================
-   計算 net（核心）
-========================= */
+/* =====================
+   核心（維持你原本模型）
+===================== */
 function calcNet(data){
 
   let income = {};
@@ -173,9 +169,9 @@ function calcNet(data){
   return net;
 }
 
-/* =========================
-   最少轉帳
-========================= */
+/* =====================
+   最少轉帳（穩定版）
+===================== */
 function buildTransfers(net){
 
   let creditors = [];
@@ -187,7 +183,6 @@ function buildTransfers(net){
   });
 
   let res = [];
-
   let i = 0, j = 0;
 
   while(i < creditors.length && j < debtors.length){
@@ -200,22 +195,22 @@ function buildTransfers(net){
     res.push({
       from: d.p,
       to: c.p,
-      amount: Math.round(pay)
+      amount: Number(pay.toFixed(2))
     });
 
     c.amt -= pay;
     d.amt -= pay;
 
-    if(c.amt === 0) i++;
-    if(d.amt === 0) j++;
+    if(Math.abs(c.amt) < 0.01) i++;
+    if(Math.abs(d.amt) < 0.01) j++;
   }
 
   return res;
 }
 
-/* =========================
+/* =====================
    render
-========================= */
+===================== */
 function render(net, trs){
 
   let html = "<h3>📊 Net</h3><table>";
@@ -239,9 +234,9 @@ function render(net, trs){
   document.getElementById("out").innerHTML = html;
 }
 
-/* =========================
+/* =====================
    MAIN
-========================= */
+===================== */
 function calc(){
   let data = getData();
   let net = calcNet(data);

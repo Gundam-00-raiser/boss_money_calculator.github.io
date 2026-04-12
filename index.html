@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳系統 v9</title>
+<title>BOSS 分帳明細 v10</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -60,7 +60,7 @@ th, td {
 
 <body>
 
-<h2>🏦 BOSS 分帳系統 v9</h2>
+<h2>🏦 BOSS 分帳系統 v10</h2>
 
 <textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
 <button onclick="setPlayers()">更新玩家</button>
@@ -86,7 +86,7 @@ let players = [];
 let orderedPlayers = [];
 
 /* =========================
-   玩家鎖定
+   初始化玩家
 ========================= */
 function setPlayers() {
 
@@ -101,7 +101,7 @@ function setPlayers() {
 }
 
 /* =========================
-   dropdown
+   dropdown更新
 ========================= */
 function refreshSelects() {
 
@@ -119,7 +119,7 @@ function refreshSelects() {
 }
 
 /* =========================
-   add row
+   新增列
 ========================= */
 function addRow() {
 
@@ -164,7 +164,7 @@ function buildLedger() {
 }
 
 /* =========================
-   🔥 V9 CORE（完全正確模型）
+   NET CALC（穩定版）
 ========================= */
 function computeNet(ledger) {
 
@@ -175,12 +175,10 @@ function computeNet(ledger) {
     income[p] = 0;
   });
 
-  // ✔ 支出
   ledger.forEach(l => {
     spend[l.winner] += l.amount;
   });
 
-  // ✔ 全局分配（不再逐筆拆）
   const total = ledger.reduce((s, l) => s + l.amount, 0);
   const n = orderedPlayers.length;
 
@@ -190,13 +188,12 @@ function computeNet(ledger) {
     income[p] = base;
   });
 
-  // ✔ winner 回補（避免 self distortion）
   ledger.forEach(l => {
     income[l.winner] += l.amount / n;
   });
 
-  // ✔ net
   let net = {};
+
   orderedPlayers.forEach(p => {
     net[p] = income[p] - spend[p];
   });
@@ -205,7 +202,7 @@ function computeNet(ledger) {
 }
 
 /* =========================
-   transfer optimizer（最穩版本）
+   轉帳生成
 ========================= */
 function buildTransfers(net) {
 
@@ -248,7 +245,24 @@ function buildTransfers(net) {
 }
 
 /* =========================
-   render
+   🔥 ACTIVE PLAYERS（重點修正）
+   只顯示有金流的人
+========================= */
+function getActivePlayers(spend, income) {
+
+  let set = new Set();
+
+  orderedPlayers.forEach(p => {
+
+    if (spend[p] > 0) set.add(p);
+    if (income[p] > 0) set.add(p);
+  });
+
+  return [...set];
+}
+
+/* =========================
+   RENDER（精簡矩陣版）
 ========================= */
 function render(spend, income, net, transfers) {
 
@@ -266,11 +280,16 @@ function render(spend, income, net, transfers) {
 
   html += "</table>";
 
-  /* MATRIX */
+  /* =========================
+     MATRIX（已精簡）
+  ========================= */
+
+  const activePlayers = getActivePlayers(spend, income);
+
   let map = {};
 
-  orderedPlayers.forEach(r => {
-    orderedPlayers.forEach(p => {
+  activePlayers.forEach(r => {
+    activePlayers.forEach(p => {
       map[`${r}->${p}`] = "";
     });
   });
@@ -279,16 +298,19 @@ function render(spend, income, net, transfers) {
     map[`${t.from}->${t.to}`] = t.amount;
   });
 
-  html += `<h3>💸 轉帳明細</h3><table><tr><th></th>`;
+  html += `<h3>💸 轉帳明細（精簡版）</h3><table><tr><th></th>`;
 
-  orderedPlayers.forEach(p => html += `<th>${p}</th>`);
+  activePlayers.forEach(p => html += `<th>${p}</th>`);
   html += "</tr>";
 
-  orderedPlayers.forEach(r => {
+  activePlayers.forEach(r => {
+
     html += `<tr><th>${r}</th>`;
-    orderedPlayers.forEach(p => {
+
+    activePlayers.forEach(p => {
       html += `<td>${map[`${r}->${p}`] || ""}</td>`;
     });
+
     html += "</tr>";
   });
 
@@ -298,7 +320,7 @@ function render(spend, income, net, transfers) {
 }
 
 /* =========================
-   run
+   RUN
 ========================= */
 function run() {
 
@@ -312,7 +334,7 @@ function run() {
 }
 
 /* =========================
-   export
+   EXPORT
 ========================= */
 function exportImage() {
 
@@ -325,7 +347,7 @@ function exportImage() {
 
     let a = document.createElement("a");
     a.href = canvas.toDataURL("image/png");
-    a.download = "boss_v9.png";
+    a.download = "boss_matrix.png";
     a.click();
   });
 }

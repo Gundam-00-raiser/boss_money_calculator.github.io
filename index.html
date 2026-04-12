@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳系統 v12</title>
+<title>BOSS 銀行級 v14（穩定清算版）</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -60,7 +60,7 @@ th, td {
 
 <body>
 
-<h2>🏦 BOSS 分帳系統 v12</h2>
+<h2>🏦 BOSS v14（銀行級穩定清算）</h2>
 
 <textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
 <button onclick="setPlayers()">更新玩家</button>
@@ -69,7 +69,7 @@ th, td {
 <tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">新增</button>
+<button onclick="addRow()">新增列</button>
 <button onclick="run()">計算</button>
 <button onclick="exportImage()">輸出圖片</button>
 
@@ -86,7 +86,7 @@ let players = [];
 let orderedPlayers = [];
 
 /* =========================
-   初始化玩家
+   INIT
 ========================= */
 function setPlayers() {
 
@@ -119,7 +119,7 @@ function refreshSelects() {
 }
 
 /* =========================
-   新增列
+   row
 ========================= */
 function addRow() {
 
@@ -164,12 +164,11 @@ function buildLedger() {
 }
 
 /* =========================
-   🔥 v12 NET ENGINE（唯一正確）
+   NET ENGINE v14
 ========================= */
 function computeNet(ledger) {
 
   let spend = {};
-
   orderedPlayers.forEach(p => spend[p] = 0);
 
   ledger.forEach(l => {
@@ -184,14 +183,14 @@ function computeNet(ledger) {
   let net = {};
 
   orderedPlayers.forEach(p => {
-    net[p] = parseFloat((fairShare - spend[p]).toFixed(2));
+    net[p] = +(fairShare - spend[p]).toFixed(2);
   });
 
   return { spend, net };
 }
 
 /* =========================
-   TRANSFER ENGINE（穩定版）
+   TRANSFER ENGINE v14
 ========================= */
 function buildTransfers(net) {
 
@@ -199,9 +198,14 @@ function buildTransfers(net) {
   let debtors = [];
 
   orderedPlayers.forEach(p => {
-    if (net[p] > 0) creditors.push({ p, v: net[p] });
-    if (net[p] < 0) debtors.push({ p, v: -net[p] });
+
+    if (net[p] > 0.01) creditors.push({ p, v: net[p] });
+    if (net[p] < -0.01) debtors.push({ p, v: -net[p] });
   });
+
+  // 排序（穩定清算）
+  creditors.sort((a,b)=>b.v-a.v);
+  debtors.sort((a,b)=>b.v-a.v);
 
   let transfers = [];
 
@@ -210,11 +214,18 @@ function buildTransfers(net) {
     let c = creditors[0];
     let d = debtors[0];
 
+    // ❌ 禁止 self transfer
+    if (c.p === d.p) {
+      creditors.shift();
+      continue;
+    }
+
     let pay = Math.min(c.v, d.v);
 
-    // 防碎策略
+    // 🔥 合併碎帳策略
     if (pay < 50 && creditors.length > 1 && debtors.length > 1) {
       creditors.push(creditors.shift());
+      debtors.push(debtors.shift());
       continue;
     }
 
@@ -227,18 +238,41 @@ function buildTransfers(net) {
     c.v -= pay;
     d.v -= pay;
 
-    if (Math.abs(c.v) < 0.01) creditors.shift();
-    if (Math.abs(d.v) < 0.01) debtors.shift();
+    if (c.v <= 0.01) creditors.shift();
+    if (d.v <= 0.01) debtors.shift();
   }
 
-  return transfers;
+  return mergeTransfers(transfers);
 }
 
 /* =========================
-   ACTIVE MATRIX（精簡）
+   MERGE（碎帳修復）
+========================= */
+function mergeTransfers(list) {
+
+  let map = {};
+
+  list.forEach(t => {
+    let key = `${t.from}->${t.to}`;
+    map[key] = (map[key] || 0) + t.amount;
+  });
+
+  return Object.entries(map).map(([k,v]) => {
+
+    let [from,to] = k.split("->");
+
+    return {
+      from,
+      to,
+      amount: Math.round(v)
+    };
+  });
+}
+
+/* =========================
+   ACTIVE FILTER
 ========================= */
 function getActivePlayers(net) {
-
   return orderedPlayers.filter(p => Math.abs(net[p]) > 0.01);
 }
 
@@ -260,12 +294,12 @@ function render(spend, net, transfers) {
 
   html += "</table>";
 
-  const activePlayers = getActivePlayers(net);
+  const active = getActivePlayers(net);
 
   let map = {};
 
-  activePlayers.forEach(r => {
-    activePlayers.forEach(p => {
+  active.forEach(r => {
+    active.forEach(p => {
       map[`${r}->${p}`] = "";
     });
   });
@@ -274,16 +308,19 @@ function render(spend, net, transfers) {
     map[`${t.from}->${t.to}`] = t.amount;
   });
 
-  html += `<h3>💸 轉帳明細</h3><table><tr><th></th>`;
+  html += `<h3>💸 轉帳矩陣（穩定版）</h3><table><tr><th></th>`;
 
-  activePlayers.forEach(p => html += `<th>${p}</th>`);
+  active.forEach(p => html += `<th>${p}</th>`);
   html += "</tr>";
 
-  activePlayers.forEach(r => {
+  active.forEach(r => {
+
     html += `<tr><th>${r}</th>`;
-    activePlayers.forEach(p => {
+
+    active.forEach(p => {
       html += `<td>${map[`${r}->${p}`] || ""}</td>`;
     });
+
     html += "</tr>";
   });
 
@@ -320,7 +357,7 @@ function exportImage() {
 
     let a = document.createElement("a");
     a.href = canvas.toDataURL("image/png");
-    a.download = "boss_v12.png";
+    a.download = "boss_v14.png";
     a.click();
   });
 }

@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳（GAS 1:1穩定版）</title>
+<title>BOSS 分帳系統 FINAL</title>
 
 <style>
 body{
@@ -14,14 +14,13 @@ body{
 
 textarea,input,button{
   padding:6px;
-  margin:4px;
+  margin:5px;
 }
 
 table{
+  width:100%;
   border-collapse:collapse;
   margin-top:10px;
-  width:100%;
-  background:#1e1e1e;
 }
 
 th,td{
@@ -30,32 +29,30 @@ th,td{
   text-align:center;
 }
 
-th{background:#2a2a2a;}
-
-select{padding:4px;}
+th{background:#222;}
 </style>
 </head>
 
 <body>
 
-<h2>🏦 BOSS 分帳（GAS 1:1 穩定克隆版）</h2>
+<h2>🔥 BOSS 分帳 FINAL 系統</h2>
 
-<textarea id="players" rows="5"></textarea><br>
-<button onclick="setPlayers()">更新玩家</button>
+<h3>👥 玩家（每行一個）</h3>
+<textarea id="players" rows="6"></textarea>
 
-<table>
-<thead>
+<h3>📦 結標資料</h3>
+
+<table id="bidTable">
 <tr>
 <th>物品</th>
 <th>得標者</th>
 <th>金額</th>
+<th></th>
 </tr>
-</thead>
-<tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">新增</button>
-<button onclick="calc()">計算</button>
+<button onclick="addRow()">➕ 新增</button>
+<button onclick="calc()">🚀 計算</button>
 
 <div id="out"></div>
 
@@ -63,60 +60,59 @@ select{padding:4px;}
 
 let P = [];
 
-/* =====================
-   玩家
-===================== */
-function setPlayers(){
+function updatePlayers(){
   P = document.getElementById("players")
     .value.split("\n")
     .map(x=>x.trim())
     .filter(x=>x);
 }
 
-/* =====================
-   row
-===================== */
 function addRow(){
+  updatePlayers();
 
   let tr = document.createElement("tr");
 
+  let options = P.map(p=>`<option>${p}</option>`).join("");
+
   tr.innerHTML = `
     <td><input></td>
-    <td>
-      <select>
-        ${P.map(p=>`<option value="${p}">${p}</option>`).join("")}
-      </select>
-    </td>
+    <td><select>${options}</select></td>
     <td><input type="number"></td>
+    <td><button onclick="this.parentNode.parentNode.remove()">X</button></td>
   `;
 
-  document.getElementById("rows").appendChild(tr);
+  document.getElementById("bidTable").appendChild(tr);
 }
 
-/* =====================
-   data
-===================== */
 function getData(){
 
-  let d = [];
+  let rows = document.querySelectorAll("#bidTable tr");
+  let data = [];
 
-  document.querySelectorAll("#rows tr").forEach(r=>{
+  for(let i=1;i<rows.length;i++){
+
+    let r = rows[i];
+
     let item = r.children[0].querySelector("input").value;
-    let w = r.children[1].querySelector("select").value;
-    let a = Number(r.children[2].querySelector("input").value);
+    let winner = r.children[1].querySelector("select").value;
+    let amount = Number(r.children[2].querySelector("input").value);
 
-    if(item && w && a){
-      d.push({winner:w, amount:a});
+    if(item && winner && amount){
+      data.push({item,winner,amount});
     }
-  });
+  }
 
-  return d;
+  return data;
 }
 
-/* =====================
-   GAS NET（完全一致）
-===================== */
-function calcNet(data){
+// ==========================
+// 🔥 CORE ENGINE（正確版）
+// ==========================
+function calc(){
+
+  updatePlayers();
+
+  let data = getData();
 
   let income = {};
   let spend = {};
@@ -126,11 +122,13 @@ function calcNet(data){
     spend[p]=0;
   });
 
+  // ======================
+  // 1. 正確分配（N-1）
+  // ======================
   data.forEach(d=>{
-    let n = P.length - 1;
-    let share = Math.floor(d.amount / n);
 
-    let remainder = d.amount - share * n;
+    let n = P.length - 1;
+    let share = d.amount / n;
 
     spend[d.winner] += d.amount;
 
@@ -140,79 +138,71 @@ function calcNet(data){
       }
     });
 
-    income[d.winner] += remainder;
   });
 
+  // ======================
+  // 2. net
+  // ======================
   let net = {};
 
   P.forEach(p=>{
     net[p] = income[p] - spend[p];
   });
 
-  return net;
-}
-
-/* =====================
-   🔥 FIXED TRANSFER ENGINE（關鍵修正）
-===================== */
-function buildTransfers(net){
-
-  const EPS = 0.01;
-
+  // ======================
+  // 3. 分類
+  // ======================
   let creditors = [];
   let debtors = [];
 
-  // 🔥 不過濾任何人（防止消失）
   P.forEach(p=>{
-    let v = Math.round(net[p]*100)/100;
-
-    if(v > EPS) creditors.push({p, amt:v});
-    else if(v < -EPS) debtors.push({p, amt:-v});
+    let v = net[p];
+    if(v > 0) creditors.push({p,amt:v});
+    if(v < 0) debtors.push({p,amt:-v});
   });
 
+  // ======================
+  // 4. SORT（穩定）
+  // ======================
   creditors.sort((a,b)=>b.amt-a.amt);
   debtors.sort((a,b)=>b.amt-a.amt);
 
-  let res = [];
+  // ======================
+  // 5. sequential settlement
+  // ======================
+  let i=0,j=0;
+  let transfers=[];
 
-  let i = 0;
-  let j = 0;
-
-  while(i < creditors.length && j < debtors.length){
+  while(i<creditors.length && j<debtors.length){
 
     let c = creditors[i];
     let d = debtors[j];
 
     let pay = Math.min(c.amt, d.amt);
 
-    if(pay < EPS){
-      j++;
-      continue;
-    }
-
-    res.push({
+    transfers.push({
       from: d.p,
       to: c.p,
-      amount: Math.round(pay*100)/100
+      amount: Math.round(pay)
     });
 
     c.amt -= pay;
     d.amt -= pay;
 
-    if(c.amt < EPS) i++;
-    if(d.amt < EPS) j++;
+    if(c.amt <= 0.0001) i++;
+    if(d.amt <= 0.0001) j++;
   }
 
-  return res;
+  render(net, transfers);
 }
 
-/* =====================
-   render（純展示）
-===================== */
+// ======================
+// render
+// ======================
 function render(net, transfers){
 
   let html = "<h3>📊 NET</h3><table>";
-  html += "<tr><th>玩家</th><th>淨值</th></tr>";
+  html += "<tr><th>人</th><th>net</th></tr>";
 
   P.forEach(p=>{
     html += `<tr><td>${p}</td><td>${net[p].toFixed(2)}</td></tr>`;
@@ -220,7 +210,7 @@ function render(net, transfers){
 
   html += "</table>";
 
-  html += "<h3>💸 轉帳矩陣（穩定版）</h3><table>";
+  html += "<h3>💸 轉帳矩陣</h3><table>";
   html += "<tr><th>From</th><th>To</th><th>Amount</th></tr>";
 
   transfers.forEach(t=>{
@@ -230,20 +220,6 @@ function render(net, transfers){
   html += "</table>";
 
   document.getElementById("out").innerHTML = html;
-}
-
-/* =====================
-   main
-===================== */
-function calc(){
-
-  let data = getData();
-
-  let net = calcNet(data);
-
-  let transfers = buildTransfers(net);
-
-  render(net, transfers);
 }
 
 </script>

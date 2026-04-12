@@ -7,40 +7,38 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <style>
-body {
+body{
   font-family: Arial;
   background:#121212;
   color:#fff;
   padding:20px;
 }
 
-h2,h3 { margin-top:20px; }
-
-textarea, input, select, button {
+textarea,input,select,button{
   padding:6px;
   margin:4px;
 }
 
-table {
-  width:100%;
+table{
   border-collapse: collapse;
+  width:100%;
   margin-top:10px;
   background:#1f1f1f;
 }
 
-th, td {
+th,td{
   border:1px solid #444;
   padding:8px;
   text-align:center;
 }
 
-th { background:#2a2a2a; }
-
-button {
-  cursor:pointer;
+th{
+  background:#2a2a2a;
 }
 
-#reportArea table {
+button{cursor:pointer}
+
+#reportArea table{
   background:white;
   color:black;
 }
@@ -49,20 +47,16 @@ button {
 
 <body>
 
-<h2>🔥 破天分帳系統 </h2>
+<h2>🔥 破天BOSS分帳計算機 </h2>
 
-<!-- ===================== -->
-<!-- 👥 玩家資料庫 -->
-<!-- ===================== -->
-<h3>👥 玩家名單 </h3>
+<!-- 玩家池 -->
+<h3>👥 玩家清單</h3>
+<textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C&#10;D"></textarea>
+<button onclick="updatePlayers()">更新玩家</button>
 
-<textarea id="playerPool" rows="6" placeholder="A&#10;B&#10;C&#10;D"></textarea>
+<hr>
 
-<button onclick="updatePlayers()">更新玩家名單</button>
-
-<!-- ===================== -->
-<!-- 📦 競標表 -->
-<!-- ===================== -->
+<!-- 競標 -->
 <h3>📦 競標資料</h3>
 
 <table>
@@ -77,65 +71,59 @@ button {
 <tbody id="tableBody"></tbody>
 </table>
 
-<button onclick="addRow()">➕ 新增列</button>
-<button onclick="calculate()">🧮 計算</button>
-<button onclick="exportImage()">📸 產生圖片</button>
+<button onclick="addRow()">➕ 新增結標物品/金額</button>
+<button onclick="calculate()">🧮 結算</button>
+<button onclick="exportImage()">📸 圖片生成</button>
 
 <hr>
 
-<!-- ===================== -->
-<!-- 📊 結果 -->
-<!-- ===================== -->
 <div id="reportArea"></div>
 
 <script>
 
-// =====================
-// 全域玩家池
-// =====================
 let players = [];
 
 // =====================
-// 更新玩家池
+// 更新玩家
 // =====================
-function updatePlayers() {
+function updatePlayers(){
   players = document.getElementById("playerPool")
     .value.split("\n")
-    .map(x => x.trim())
-    .filter(x => x);
+    .map(x=>x.trim())
+    .filter(x=>x);
 
   refreshDropdowns();
 }
 
 // =====================
-// 更新所有下拉選單
+// 更新所有下拉
 // =====================
-function refreshDropdowns() {
-  document.querySelectorAll(".playerSelect").forEach(sel => {
+function refreshDropdowns(){
+  document.querySelectorAll(".playerSelect").forEach(sel=>{
     const current = sel.value;
 
-    sel.innerHTML = players.map(p =>
+    sel.innerHTML = players.map(p=>
       `<option value="${p}">${p}</option>`
     ).join("");
 
-    if (players.includes(current)) sel.value = current;
+    if(players.includes(current)) sel.value=current;
   });
 }
 
 // =====================
 // 新增列
 // =====================
-function addRow() {
+function addRow(){
   const tbody = document.getElementById("tableBody");
 
   const row = document.createElement("tr");
 
-  row.innerHTML = `
+  row.innerHTML=`
     <td><input></td>
 
     <td>
       <select class="playerSelect">
-        ${players.map(p => `<option value="${p}">${p}</option>`).join("")}
+        ${players.map(p=>`<option value="${p}">${p}</option>`).join("")}
       </select>
     </td>
 
@@ -147,87 +135,156 @@ function addRow() {
   tbody.appendChild(row);
 }
 
-// 初始化一列
 addRow();
 
 // =====================
-// 計算核心
+// 計算
 // =====================
-function calculate() {
+function calculate(){
 
-  if (players.length < 2) {
-    alert("至少需要2位玩家");
-    return;
-  }
+  let data=[];
 
-  let data = [];
+  document.querySelectorAll("#tableBody tr").forEach(row=>{
+    const item=row.children[0].querySelector("input").value;
+    const winner=row.children[1].querySelector("select").value;
+    const amount=Number(row.children[2].querySelector("input").value);
 
-  document.querySelectorAll("#tableBody tr").forEach(row => {
-
-    const item = row.children[0].querySelector("input").value;
-    const winner = row.children[1].querySelector("select").value;
-    const amount = Number(row.children[2].querySelector("input").value);
-
-    if (item && winner && amount) {
-      data.push([item, winner, amount]);
+    if(item && winner && amount){
+      data.push([item,winner,amount]);
     }
   });
 
-  let spend = {}, income = {};
-  players.forEach(p => {
-    spend[p] = 0;
-    income[p] = 0;
+  let spend={}, income={};
+  players.forEach(p=>{
+    spend[p]=0;
+    income[p]=0;
   });
 
   // 支出
-  data.forEach(r => {
-    spend[r[1]] += r[2];
+  data.forEach(r=>{
+    spend[r[1]]+=r[2];
   });
 
   // 收入
-  data.forEach(r => {
-    const share = Math.floor(r[2] / (players.length - 1));
-    const remainder = r[2] - share * (players.length - 1);
+  data.forEach(r=>{
+    const share=Math.floor(r[2]/(players.length-1));
+    const remainder=r[2]-share*(players.length-1);
 
-    players.forEach(p => {
-      if (p !== r[1]) income[p] += share;
+    players.forEach(p=>{
+      if(p!==r[1]) income[p]+=share;
     });
 
-    income[r[1]] += remainder;
+    income[r[1]]+=remainder;
   });
 
   // =====================
-  // 輸出報表
+  // 計算轉帳
   // =====================
-  let html = `
-  <h3>📊 結算報表</h3>
-  <table>
-  <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>
-  `;
-
-  players.forEach(p => {
-    const net = income[p] - spend[p];
-    html += `<tr><td>${p}</td><td>${spend[p]}</td><td>${income[p]}</td><td>${net}</td></tr>`;
+  let balances={};
+  players.forEach(p=>{
+    balances[p]=income[p]-spend[p];
   });
 
-  html += "</table>";
+  let creditors=players.filter(p=>balances[p]>0);
+  let debtors=players.filter(p=>balances[p]<0);
 
-  document.getElementById("reportArea").innerHTML = html;
+  let transfers=[];
+
+  while(creditors.length && debtors.length){
+
+    let c=creditors[0];
+    let d=debtors[0];
+
+    let pay=Math.min(balances[c],-balances[d]);
+
+    if(pay<50){
+      if(!(creditors.length===1 && debtors.length===1)){
+        debtors.push(debtors.shift());
+        continue;
+      }
+    }
+
+    transfers.push({from:d,to:c,amount:pay});
+
+    balances[c]-=pay;
+    balances[d]+=pay;
+
+    if(balances[c]===0) creditors.shift();
+    if(balances[d]===0) debtors.shift();
+  }
+
+  // =====================
+  // 矩陣輸出（你要的重點）
+  // =====================
+
+  document.getElementById("reportArea").innerHTML = buildMatrix(transfers);
 }
 
 // =====================
-// 📸 產圖
+// 矩陣報表（核心）
 // =====================
-function exportImage() {
-  const target = document.getElementById("reportArea");
+function buildMatrix(transfers){
 
-  html2canvas(target, {
-    backgroundColor: "#ffffff",
-    scale: 2
-  }).then(canvas => {
-    const link = document.createElement("a");
-    link.download = "boss-report.png";
-    link.href = canvas.toDataURL("image/png");
+  // 付款人（只顯示有付款的）
+  let payersSet=new Set();
+  let receiversSet=new Set();
+
+  transfers.forEach(t=>{
+    payersSet.add(t.from);
+    receiversSet.add(t.to);
+  });
+
+  let payers=[...payersSet];
+  let receivers=[...receiversSet];
+
+  let matrix={};
+
+  receivers.forEach(r=>{
+    matrix[r]={};
+    payers.forEach(p=>matrix[r][p]="");
+  });
+
+  transfers.forEach(t=>{
+    matrix[t.to][t.from]=t.amount;
+  });
+
+  let html=`
+    <h3>💸 分帳矩陣</h3>
+    <table>
+      <tr>
+        <th>收款人 / 付款人</th>
+        ${payers.map(p=>`<th>${p}</th>`).join("")}
+      </tr>
+  `;
+
+  receivers.forEach(r=>{
+    html+=`<tr><th>${r}</th>`;
+
+    payers.forEach(p=>{
+      html+=`<td>${matrix[r][p]||""}</td>`;
+    });
+
+    html+=`</tr>`;
+  });
+
+  html+=`</table>`;
+
+  return html;
+}
+
+// =====================
+// 產圖
+// =====================
+function exportImage(){
+  const target=document.getElementById("reportArea");
+
+  html2canvas(target,{
+    backgroundColor:"#ffffff",
+    scale:2
+  }).then(canvas=>{
+    const link=document.createElement("a");
+    link.download="boss-matrix.png";
+    link.href=canvas.toDataURL("image/png");
     link.click();
   });
 }

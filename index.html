@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳 PRO+</title>
+<title>BOSS結算系統</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -38,10 +38,8 @@ th, td {
   min-width:80px;
 }
 
-button { cursor:pointer; }
-
 /* =========================
-   📊 結算 + 矩陣區塊
+   UI區塊
 ========================= */
 #reportArea {
   display:flex;
@@ -51,7 +49,7 @@ button { cursor:pointer; }
   max-width:1100px;
 }
 
-/* 表格卡片化 */
+/* 卡片 */
 #reportArea table {
   background:white;
   color:black;
@@ -62,36 +60,27 @@ button { cursor:pointer; }
   overflow:hidden;
 }
 
-/* 🔥 灰階加深（你要的） */
+/* header 更深灰 */
 #reportArea th {
-  background:#8c8c8c;   /* 比原本更深灰 */
+  background:#7a7a7a;
   color:#111;
-  font-weight:bold;
 }
 
 #reportArea td {
   background:#f4f4f4;
-}
-
-/* 縮排 */
-#reportArea h3 {
-  margin:10px 0 5px;
-  font-size:16px;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🔥 BOSS 分帳 PRO+</h2>
+<h2>🏦 BOSS結算系統</h2>
 
-<h3>👥 玩家資料庫</h3>
+<h3>👥 玩家</h3>
+<textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
+<button onclick="setPlayers()">更新玩家</button>
 
-<textarea id="playerPool" rows="6" placeholder="A&#10;B&#10;C"></textarea>
-
-<button onclick="updatePlayers()">更新玩家名單</button>
-
-<h3>📦 競標資料</h3>
+<h3>📦 競標</h3>
 
 <table>
 <thead>
@@ -99,15 +88,15 @@ button { cursor:pointer; }
   <th>物品</th>
   <th>得標者</th>
   <th>金額</th>
-  <th>操作</th>
+  <th></th>
 </tr>
 </thead>
-<tbody id="tableBody"></tbody>
+<tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">➕ 新增列</button>
-<button onclick="calculate()">🧮 計算</button>
-<button onclick="exportImage()">📸 產生圖片</button>
+<button onclick="addRow()">新增</button>
+<button onclick="runSettlement()">計算</button>
+<button onclick="exportImage()">輸出圖片</button>
 
 <hr>
 
@@ -115,68 +104,69 @@ button { cursor:pointer; }
 
 <script>
 
+/* =========================
+   LAYER 0：STATE
+========================= */
 let players = [];
+let items = [];
 
-// =====================
-// 更新玩家
-// =====================
-function updatePlayers() {
+/* =========================
+   PLAYER
+========================= */
+function setPlayers() {
   players = document.getElementById("playerPool")
     .value.split("\n")
     .map(x => x.trim())
     .filter(x => x);
-
-  refreshDropdowns();
 }
 
-// =====================
-function refreshDropdowns() {
-  document.querySelectorAll(".playerSelect").forEach(sel => {
-    const cur = sel.value;
-    sel.innerHTML = players.map(p => `<option>${p}</option>`).join("");
-    if (players.includes(cur)) sel.value = cur;
-  });
-}
-
-// =====================
+/* =========================
+   UI ROW
+========================= */
 function addRow() {
-  const row = document.createElement("tr");
+  const tr = document.createElement("tr");
 
-  row.innerHTML = `
+  tr.innerHTML = `
     <td><input></td>
     <td>
-      <select class="playerSelect">
+      <select>
         ${players.map(p => `<option>${p}</option>`).join("")}
       </select>
     </td>
     <td><input type="number"></td>
-    <td><button onclick="this.parentElement.parentElement.remove()">刪除</button></td>
+    <td><button onclick="this.parentElement.parentElement.remove()">X</button></td>
   `;
 
-  document.getElementById("tableBody").appendChild(row);
+  document.getElementById("rows").appendChild(tr);
 }
 
 addRow();
 
-// =====================
-// 計算
-// =====================
-function calculate() {
+/* =========================
+   LAYER 1：Ledger（原始帳本）
+========================= */
+function buildLedger() {
 
   let data = [];
 
-  document.querySelectorAll("#tableBody tr").forEach(r => {
+  document.querySelectorAll("#rows tr").forEach(r => {
 
     const item = r.children[0].querySelector("input").value;
     const winner = r.children[1].querySelector("select").value;
     const amount = Number(r.children[2].querySelector("input").value);
 
     if (item && winner && amount) {
-      data.push([item, winner, amount]);
+      data.push({ item, winner, amount });
     }
   });
 
-  if (data.length === 0) return alert("無資料");
+  return data;
+}
+
+/* =========================
+   LAYER 2：Settlement Engine
+========================= */
+function settle(ledger) {
 
   let spend = {}, income = {};
 
@@ -185,26 +175,28 @@ function calculate() {
     income[p] = 0;
   });
 
-  data.forEach(r => spend[r[1]] += r[2]);
+  // spend
+  ledger.forEach(l => spend[l.winner] += l.amount);
 
+  // income
   const div = players.length - 1;
 
-  data.forEach(r => {
-    const share = Math.floor(r[2] / div);
-    const remain = r[2] - share * div;
+  ledger.forEach(l => {
+    const share = Math.floor(l.amount / div);
+    const rem = l.amount - share * div;
 
     players.forEach(p => {
-      if (p !== r[1]) income[p] += share;
+      if (p !== l.winner) income[p] += share;
     });
 
-    income[r[1]] += remain;
+    income[l.winner] += rem;
   });
 
-  let bal = {};
-  players.forEach(p => bal[p] = income[p] - spend[p]);
+  let balance = {};
+  players.forEach(p => balance[p] = income[p] - spend[p]);
 
-  let creditors = players.filter(p => bal[p] > 0);
-  let debtors = players.filter(p => bal[p] < 0);
+  let creditors = players.filter(p => balance[p] > 0);
+  let debtors = players.filter(p => balance[p] < 0);
 
   let transfers = [];
 
@@ -213,29 +205,24 @@ function calculate() {
     let c = creditors[0];
     let d = debtors[0];
 
-    let pay = Math.min(bal[c], -bal[d]);
+    let pay = Math.min(balance[c], -balance[d]);
 
     transfers.push({ from: d, to: c, amount: pay });
 
-    bal[c] -= pay;
-    bal[d] += pay;
+    balance[c] -= pay;
+    balance[d] += pay;
 
-    if (bal[c] === 0) creditors.shift();
-    if (bal[d] === 0) debtors.shift();
+    if (balance[c] === 0) creditors.shift();
+    if (balance[d] === 0) debtors.shift();
   }
 
-  // 🔥 PRO升級：完全消除碎款
-  const optimized = optimizeTransfers(transfers, 50);
-
-  document.getElementById("reportArea").innerHTML =
-    buildSummary(spend, income) +
-    buildMatrix(optimized);
+  return { spend, income, transfers };
 }
 
-// =====================
-// 🚀 銀行級合併（無碎款版）
-// =====================
-function optimizeTransfers(transfers, min = 50) {
+/* =========================
+   OPTIONAL OPTIMIZER（不破壞數學）
+========================= */
+function optimize(transfers, min = 50) {
 
   let map = {};
 
@@ -251,22 +238,22 @@ function optimizeTransfers(transfers, min = 50) {
     let [from, to] = k.split("->");
     let amt = map[k];
 
-    if (amt < min) return;
-
-    let n = Math.floor(amt / min);
-
-    for (let i = 0; i < n; i++) {
-      result.push({ from, to, amount: min });
+    if (amt < min) {
+      result.push({ from, to, amount: amt });
+    } else {
+      result.push({ from, to, amount: amt });
     }
   });
 
   return result;
 }
 
-// =====================
-function buildSummary(spend, income) {
+/* =========================
+   LAYER 3：UI
+========================= */
+function render(spend, income, transfers) {
 
-  let html = `<h3>📊 結算報表</h3><table>
+  let html = `<h3>📊 結算</h3><table>
   <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>`;
 
   players.forEach(p => {
@@ -278,50 +265,66 @@ function buildSummary(spend, income) {
     </tr>`;
   });
 
-  return html + "</table>";
-}
+  html += "</table>";
 
-// =====================
-function buildMatrix(transfers) {
+  let map = {};
+
+  transfers.forEach(t => {
+    let k = t.from + "->" + t.to;
+    map[k] = (map[k] || 0) + t.amount;
+  });
+
+  html += `<h3>💸 轉帳明細</h3><table><tr><th></th>`;
 
   let payers = [...new Set(transfers.map(t => t.from))];
   let receivers = [...new Set(transfers.map(t => t.to))];
 
-  let m = {};
-
-  receivers.forEach(r => {
-    m[r] = {};
-    payers.forEach(p => m[r][p] = "");
-  });
-
-  transfers.forEach(t => {
-    m[t.to][t.from] = t.amount;
-  });
-
-  let html = `<h3>💸 轉帳矩陣</h3><table>
-  <tr><th>收款 / 付款</th>`;
-
   payers.forEach(p => html += `<th>${p}</th>`);
-  html += `</tr>`;
+  html += "</tr>";
 
   receivers.forEach(r => {
+
     html += `<tr><th>${r}</th>`;
-    payers.forEach(p => html += `<td>${m[r][p] || ""}</td>`);
-    html += `</tr>`;
+
+    payers.forEach(p => {
+      let key = r + "->" + p;
+      html += `<td>${map[key] || ""}</td>`;
+    });
+
+    html += "</tr>";
   });
 
-  return html + "</table>";
+  html += "</table>";
+
+  document.getElementById("reportArea").innerHTML = html;
 }
 
-// =====================
+/* =========================
+   RUN
+========================= */
+function runSettlement() {
+
+  const ledger = buildLedger();
+
+  const { spend, income, transfers } = settle(ledger);
+
+  const optimized = optimize(transfers, 50);
+
+  render(spend, income, optimized);
+}
+
+/* =========================
+   IMAGE
+========================= */
 function exportImage() {
 
   const target = document.querySelector("#reportArea table:last-child");
 
   html2canvas(target, {
-    backgroundColor: "#fff",
-    scale: 2
+    backgroundColor:"#fff",
+    scale:2
   }).then(c => {
+
     let a = document.createElement("a");
     a.href = c.toDataURL();
     a.download = "matrix.png";

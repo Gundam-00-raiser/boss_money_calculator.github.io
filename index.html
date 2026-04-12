@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳 v29 Block版</title>
+<title>分帳計算機 FINAL CLEAN</title>
 
 <style>
 body{
@@ -11,34 +11,27 @@ body{
   color:#fff;
   padding:20px;
 }
-
-textarea,input,button,select{
+textarea,input,button{
   padding:6px;
   margin:4px;
 }
-
 table{
   border-collapse:collapse;
   margin-top:10px;
   background:#1e1e1e;
 }
-
 th,td{
   border:1px solid #444;
   padding:6px;
   text-align:center;
-  min-width:80px;
 }
-
-th{
-  background:#2a2a2a;
-}
+th{background:#2a2a2a;}
 </style>
 </head>
 
 <body>
 
-<h2>🏦 BOSS 分帳 v29（Block穩定版）</h2>
+<h2>🧮 FINAL 分帳計算機（穩定版）</h2>
 
 <h3>👥 玩家</h3>
 <textarea id="players" rows="5"></textarea><br>
@@ -58,7 +51,7 @@ th{
 <tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">新增列</button>
+<button onclick="addRow()">新增</button>
 <button onclick="calc()">計算</button>
 
 <div id="out"></div>
@@ -67,13 +60,26 @@ th{
 
 let P=[];
 
+/* 玩家 */
 function setPlayers(){
   P=document.getElementById("players")
     .value.split("\n")
     .map(x=>x.trim())
     .filter(x=>x);
+
+  refresh();
 }
 
+/* UI */
+function refresh(){
+  document.querySelectorAll(".w").forEach(s=>{
+    let v=s.value;
+    s.innerHTML=P.map(p=>`<option>${p}</option>`).join("");
+    if(P.includes(v)) s.value=v;
+  });
+}
+
+/* row */
 function addRow(){
   let tr=document.createElement("tr");
   tr.innerHTML=`
@@ -88,135 +94,107 @@ function addRow(){
   `;
   document.getElementById("rows").appendChild(tr);
 }
-addRow();
 
+/* data */
 function getData(){
   let d=[];
   document.querySelectorAll("#rows tr").forEach(r=>{
     let item=r.children[0].querySelector("input").value;
     let w=r.children[1].querySelector("select").value;
     let a=Number(r.children[2].querySelector("input").value);
-    if(item&&w&&a) d.push({item,winner:w,amount:a});
+    if(item&&w&&a) d.push({winner:w,amount:a});
   });
   return d;
 }
 
-/* =========================
-   STEP 1：Block 建立（不拆碎）
-========================= */
-function buildBlocks(data){
+/* core */
+function calcNet(data){
 
-  let blocks=[];
+  let income={}, spend={};
+
+  P.forEach(p=>{
+    income[p]=0;
+    spend[p]=0;
+  });
 
   data.forEach(d=>{
     let n=P.length-1;
-    let base=Math.floor(d.amount/n);
-    let rem=d.amount-base*n;
+    let share=d.amount/n;
 
-    let arr=P.filter(p=>p!==d.winner);
+    spend[d.winner]+=d.amount;
 
-    // block = 完整人單位，不拆金額
-    arr.forEach(p=>{
-      blocks.push({
-        item:d.item,
-        from:d.winner,
-        to:p,
-        amount:base
-      });
+    P.forEach(p=>{
+      if(p!==d.winner) income[p]+=share;
+    });
+  });
+
+  let net={};
+  P.forEach(p=>net[p]=income[p]-spend[p]);
+
+  return net;
+}
+
+/* settle */
+function settle(net){
+
+  let pos=[], neg=[];
+
+  P.forEach(p=>{
+    if(net[p]>0) pos.push([p,net[p]]);
+    if(net[p]<0) neg.push([p,-net[p]]);
+  });
+
+  let res=[];
+  let i=0,j=0;
+
+  while(i<pos.length && j<neg.length){
+
+    let pay=Math.min(pos[i][1],neg[j][1]);
+
+    res.push({
+      from:neg[j][0],
+      to:pos[i][0],
+      amount:Math.round(pay)
     });
 
-    // residual block（只在最後）
-    if(rem>0){
-      blocks.push({
-        item:d.item,
-        from:d.winner,
-        to:"RESIDUAL",
-        amount:rem
-      });
-    }
-  });
+    pos[i][1]-=pay;
+    neg[j][1]-=pay;
 
-  return blocks;
+    if(pos[i][1]===0) i++;
+    if(neg[j][1]===0) j++;
+  }
+
+  return res;
 }
 
-/* =========================
-   STEP 2：A/B sequential allocation
-========================= */
-function allocate(blocks){
+/* render */
+function render(net,res){
 
-  let A={}, B={};
+  let html="<h3>Net</h3><table><tr><th>人</th><th>金額</th></tr>";
 
   P.forEach(p=>{
-    A[p]=[];
-    B[p]=[];
+    html+=`<tr><td>${p}</td><td>${net[p].toFixed(2)}</td></tr>`;
   });
 
-  let payer=["A","B"];
+  html+="</table>";
 
-  let Aused=0, Bused=0;
+  html+="<h3>轉帳</h3><table><tr><th>From</th><th>To</th><th>Amount</th></tr>";
 
-  blocks.forEach(b=>{
-
-    if(b.to==="RESIDUAL"){
-      // residual 永遠給 B 收尾
-      B["RESIDUAL"]=B["RESIDUAL"]||[];
-      B["RESIDUAL"].push(b.amount);
-      return;
-    }
-
-    // A 先吃全部 block
-    if(Aused < 2500){
-      A[b.to].push(b.amount);
-      Aused += b.amount;
-    }
-    else{
-      B[b.to].push(b.amount);
-      Bused += b.amount;
-    }
+  res.forEach(r=>{
+    html+=`<tr><td>${r.from}</td><td>${r.to}</td><td>${r.amount}</td></tr>`;
   });
-
-  return {A,B};
-}
-
-/* =========================
-   STEP 3：render matrix
-========================= */
-function render(res){
-
-  let html="<h3>📊 A/B 轉帳矩陣（Block版）</h3><table>";
-
-  html+="<tr><th>收款人</th><th>A</th><th>B</th></tr>";
-
-  P.forEach(p=>{
-    html+=`
-    <tr>
-      <td>${p}</td>
-      <td>${(res.A[p]||[]).join("<br>")||"-"}</td>
-      <td>${(res.B[p]||[]).join("<br>")||"-"}</td>
-    </tr>`;
-  });
-
-  html+=`
-    <tr>
-      <td>RESIDUAL</td>
-      <td>-</td>
-      <td>${(res.B["RESIDUAL"]||[]).join("<br>")||"-"}</td>
-    </tr>
-  `;
 
   html+="</table>";
 
   document.getElementById("out").innerHTML=html;
 }
 
-/* =========================
-   MAIN
-========================= */
+/* main */
 function calc(){
   let data=getData();
-  let blocks=buildBlocks(data);
-  let res=allocate(blocks);
-  render(res);
+  let net=calcNet(data);
+  let res=settle(net);
+  render(net,res);
 }
 
 </script>

@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳 v17（合併付款矩陣版）</title>
+<title>BOSS 分帳 v18（最終穩定版）</title>
 
 <style>
 body {
@@ -34,7 +34,7 @@ th, td {
 
 <body>
 
-<h2>🏦 BOSS 分帳 v17（合併清算版）</h2>
+<h2>🏦 BOSS 分帳 v18</h2>
 
 <h3>👥 玩家</h3>
 <textarea id="playersInput"></textarea><br>
@@ -95,9 +95,7 @@ function getData(){
   return d;
 }
 
-/* ======================
-   Ledger
-====================== */
+/* ================= Ledger ================= */
 function computeLedger(data){
 
   let income={},spend={};
@@ -114,7 +112,6 @@ function computeLedger(data){
       if(p!==d.winner) income[p]+=share;
     });
 
-    // remainder 分配（集中給低收入）
     let targets=players.filter(p=>p!==d.winner)
     .sort((a,b)=>income[a]-income[b]);
 
@@ -134,71 +131,71 @@ function computeLedger(data){
   return {income,spend,net};
 }
 
-/* ======================
-   🔥 合併付款矩陣
-====================== */
+/* ================= Matrix ================= */
 function buildMatrix(net){
 
   let payers=players.filter(p=>net[p]<0);
   let receivers=players.filter(p=>net[p]>0);
 
-  // clone
-  let payLeft={};
-  let recLeft={};
-
+  let payLeft={},recLeft={};
   payers.forEach(p=>payLeft[p]=-net[p]);
   receivers.forEach(p=>recLeft[p]=net[p]);
 
-  // 排序（收款優先大額）
   receivers.sort((a,b)=>recLeft[b]-recLeft[a]);
 
   let matrix={};
   players.forEach(r=>{
     matrix[r]={};
-    players.forEach(c=>matrix[r][c]="");
+    payers.forEach(p=>matrix[r][p]="");
   });
-
-  let payerIndex=0;
 
   receivers.forEach(r=>{
 
     let need=recLeft[r];
+    let history=[];
 
-    while(need>0){
+    for(let p of payers){
 
-      let payer=payers[payerIndex % payers.length];
+      if(need<=0) break;
 
-      let available=payLeft[payer];
+      let available=payLeft[p];
+      if(available<=0) continue;
 
-      if(available<=0){
-        payerIndex++;
-        continue;
-      }
+      let pay=Math.min(available, need);
 
-      let pay=Math.min(need, available);
+      if(pay<50 && need>50) continue;
 
-      // 🔥 最小50限制
-      if(pay<50 && need>50){
-        payerIndex++;
-        continue;
-      }
+      matrix[r][p]=pay;
+      history.push({payer:p,amount:pay});
 
-      matrix[r][payer]=(matrix[r][payer]||0)+pay;
-
-      payLeft[payer]-=pay;
+      payLeft[p]-=pay;
       need-=pay;
+    }
 
-      payerIndex++;
+    // 🔥 回溯修正（避免 <50）
+    if(need>0 && need<50 && history.length>0){
+
+      let last=history[history.length-1];
+      let borrow=50-need;
+
+      if(last.amount>borrow){
+
+        matrix[r][last.payer]-=borrow;
+        matrix[r][last.payer+"__fix"]=borrow+need; // merge
+
+        need=0;
+      }
     }
   });
 
-  return matrix;
+  return {matrix,payers};
 }
 
-/* ======================
-   render
-====================== */
-function render(res,matrix){
+/* ================= Render ================= */
+function render(res,matrixData){
+
+  let matrix=matrixData.matrix;
+  let payers=matrixData.payers;
 
   let html=`<h3>結算</h3><table>
   <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>`;
@@ -214,16 +211,20 @@ function render(res,matrix){
 
   html+=`</table>`;
 
-  html+=`<h3>轉帳明細</h3><table><tr><th>收款人\\付款人</th>`;
+  html+=`<h3>轉帳矩陣</h3><table><tr><th>收款人\\付款人</th>`;
 
-  players.forEach(p=>html+=`<th>${p}</th>`);
+  payers.forEach(p=>html+=`<th>${p}</th>`);
   html+=`</tr>`;
 
-  players.forEach(r=>{
+  players.filter(r=>res.net[r]>0).forEach(r=>{
+
     html+=`<tr><th>${r}</th>`;
-    players.forEach(c=>{
-      html+=`<td>${matrix[r][c]||""}</td>`;
+
+    payers.forEach(p=>{
+      let val = matrix[r][p] || "";
+      html+=`<td>${val}</td>`;
     });
+
     html+=`</tr>`;
   });
 
@@ -232,9 +233,7 @@ function render(res,matrix){
   document.getElementById("report").innerHTML=html;
 }
 
-/* ======================
-   main
-====================== */
+/* ================= Main ================= */
 function calculate(){
 
   if(players.length<2){

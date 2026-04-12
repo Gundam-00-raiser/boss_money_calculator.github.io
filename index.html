@@ -2,21 +2,21 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳 v5（逐物品帳務版）</title>
+<title>BOSS 分帳 v12（約束最終版）</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <style>
 body {
   font-family: Arial;
-  background:#111;
+  background:#0f0f0f;
   color:#fff;
   padding:20px;
 }
 
 textarea, input, select, button {
-  padding:6px;
   margin:4px;
+  padding:6px;
 }
 
 table {
@@ -32,9 +32,7 @@ th, td {
   min-width:90px;
 }
 
-.section {
-  margin-top:20px;
-}
+h3 { margin-top:20px; }
 
 #report {
   margin-top:20px;
@@ -44,19 +42,16 @@ th, td {
 
 <body>
 
-<h2>🏦 BOSS 分帳 v5（逐物品帳務模型）</h2>
+<h2>🏦 BOSS 分帳 v12（最終約束版）</h2>
 
 <!-- 玩家 -->
-<div class="section">
-<h3>👥 玩家清單（貼上）</h3>
-<textarea id="playerInput" rows="6" placeholder="A&#10;B&#10;C"></textarea>
+<h3>👥 玩家名單</h3>
+<textarea id="playersInput" rows="6" placeholder="A&#10;B&#10;C"></textarea>
 <br>
 <button onclick="updatePlayers()">更新玩家</button>
-</div>
 
 <!-- 結標 -->
-<div class="section">
-<h3>📦 結標區</h3>
+<h3>📦 結標</h3>
 
 <table>
 <thead>
@@ -64,15 +59,14 @@ th, td {
   <th>物品</th>
   <th>得標者</th>
   <th>金額</th>
-  <th>操作</th>
+  <th>刪除</th>
 </tr>
 </thead>
 <tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">新增列</button>
+<button onclick="addRow()">新增品項</button>
 <button onclick="calculate()">計算</button>
-</div>
 
 <hr>
 
@@ -83,22 +77,22 @@ th, td {
 let players = [];
 
 /* =====================
-   更新玩家
+   玩家更新
 ===================== */
 function updatePlayers() {
 
-  players = document.getElementById("playerInput")
+  players = document.getElementById("playersInput")
     .value.split("\n")
     .map(x => x.trim())
     .filter(x => x);
 
-  refreshSelects();
+  refreshDropdowns();
 }
 
 /* =====================
-   dropdown refresh
+   下拉更新
 ===================== */
-function refreshSelects() {
+function refreshDropdowns() {
 
   document.querySelectorAll(".winner").forEach(sel => {
 
@@ -128,7 +122,7 @@ function addRow() {
       </select>
     </td>
     <td><input type="number"></td>
-    <td><button onclick="this.parentElement.parentElement.remove()">刪除</button></td>
+    <td><button onclick="this.parentElement.parentElement.remove()">X</button></td>
   `;
 
   document.getElementById("rows").appendChild(tr);
@@ -158,55 +152,72 @@ function getData() {
 }
 
 /* =====================
-   🔥 核心：逐物品帳務模型
+   核心：逐物品分攤
 ===================== */
-function buildItemTransfers(data) {
+function computeLedger(data) {
 
-  let transfers = [];
+  let income = {};
+  let spend = {};
 
-  const n = players.length;
+  players.forEach(p => {
+    income[p] = 0;
+    spend[p] = 0;
+  });
 
   data.forEach(d => {
 
-    const share = Math.floor(d.amount / (n - 1));
-    const remainder = d.amount - share * (n - 1);
+    const n = players.length - 1;
+    const share = Math.floor(d.amount / n);
+    let remainder = d.amount - share * n;
 
+    // spend
+    spend[d.winner] += d.amount;
+
+    // income
     players.forEach(p => {
-
-      if (p === d.winner) return;
-
-      transfers.push({
-        from: d.winner,
-        to: p,
-        amount: share
-      });
+      if (p !== d.winner) {
+        income[p] += share;
+      }
     });
 
-    // remainder 不影響外部帳（內部修正）
+    // remainder buffer（不碎帳）
+    distributeRemainder(d.winner, remainder, income);
   });
 
-  return transfers;
+  let net = {};
+  players.forEach(p => {
+    net[p] = income[p] - spend[p];
+  });
+
+  return { income, spend, net };
 }
 
 /* =====================
-   合併轉帳（避免碎帳）
+   remainder 分配（≥50限制）
 ===================== */
-function merge(transfers) {
+function distributeRemainder(winner, remainder, income) {
 
-  let map = {};
+  if (remainder <= 0) return;
 
-  transfers.forEach(t => {
+  // 找最低收入者（不含 winner）
+  let targets = players
+    .filter(p => p !== winner)
+    .sort((a,b) => income[a] - income[b]);
 
-    let key = `${t.from}->${t.to}`;
-    map[key] = (map[key] || 0) + t.amount;
-  });
+  let i = 0;
 
-  return Object.entries(map).map(([k,v]) => {
+  while (remainder >= 50 && i < targets.length) {
 
-    let [from,to] = k.split("->");
+    let give = Math.min(remainder, 50 * Math.ceil(remainder / 50));
 
-    return { from, to, amount: v };
-  });
+    // 強制 ≥50
+    if (give < 50) give = remainder;
+
+    income[targets[i]] += give;
+    remainder -= give;
+
+    i++;
+  }
 }
 
 /* =====================
@@ -214,35 +225,38 @@ function merge(transfers) {
 ===================== */
 function calculate() {
 
-  const data = getData();
-
   if (players.length < 2) {
     alert("玩家不足");
     return;
   }
 
-  let rawTransfers = buildItemTransfers(data, players);
+  const data = getData();
+  const result = computeLedger(data);
 
-  let transfers = merge(rawTransfers);
-
-  render(transfers);
+  render(result);
 }
 
 /* =====================
    render
 ===================== */
-function render(transfers) {
+function render(result) {
 
-  let html = `<h3>💸 轉帳明細（逐物品模型）</h3>
+  let html = `
+  <h3>📊 結算結果</h3>
   <table>
-  <tr><th>付款人</th><th>收款人</th><th>金額</th></tr>`;
+  <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>
+  `;
 
-  transfers.forEach(t => {
-    html += `<tr>
-      <td>${t.from}</td>
-      <td>${t.to}</td>
-      <td>${t.amount}</td>
-    </tr>`;
+  players.forEach(p => {
+
+    html += `
+      <tr>
+        <td>${p}</td>
+        <td>${result.spend[p]}</td>
+        <td>${result.income[p]}</td>
+        <td>${result.net[p]}</td>
+      </tr>
+    `;
   });
 
   html += "</table>";

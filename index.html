@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>破天分帳小助手</title>
+<title>破天分帳計算機</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -32,31 +32,39 @@ th,td{
   text-align:center;
 }
 
-th{
-  background:#2a2a2a;
+th{background:#2a2a2a;}
+
+button{cursor:pointer;}
+
+.error{
+  border:2px solid red !important;
+  background:#3a0000;
 }
 
-button{cursor:pointer}
-
-#reportArea table{
-  background:white;
-  color:black;
+#msg{
+  margin:10px 0;
+  padding:10px;
+  background:#222;
+  border-left:4px solid #00d4ff;
 }
 </style>
 </head>
 
 <body>
 
-<h2>🔥 破天BOSS分帳計算機 </h2>
+<h2>🔥破天分帳計算機</h2>
 
-<!-- 玩家池 -->
-<h3>👥 玩家清單</h3>
-<textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C&#10;D"></textarea>
+<!-- 玩家 -->
+<h3>👥 玩家資料庫</h3>
+<textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
 <button onclick="updatePlayers()">更新玩家</button>
+
+<!-- 訊息 -->
+<div id="msg">📌 等待操作</div>
 
 <hr>
 
-<!-- 競標 -->
+<!-- 表格 -->
 <h3>📦 競標資料</h3>
 
 <table>
@@ -71,9 +79,9 @@ button{cursor:pointer}
 <tbody id="tableBody"></tbody>
 </table>
 
-<button onclick="addRow()">➕ 新增結標物品/金額</button>
-<button onclick="calculate()">🧮 結算</button>
-<button onclick="exportImage()">📸 圖片生成</button>
+<button onclick="addRow()">➕ 新增</button>
+<button onclick="calculate()">🧮 計算</button>
+<button onclick="exportImage()">📸 產生圖片</button>
 
 <hr>
 
@@ -81,28 +89,43 @@ button{cursor:pointer}
 
 <script>
 
-let players = [];
+let players=[];
 
 // =====================
-// 更新玩家
+// 訊息顯示
+// =====================
+function showMsg(text,color="#00d4ff"){
+  const msg=document.getElementById("msg");
+  msg.innerText=text;
+  msg.style.borderLeftColor=color;
+}
+
+// =====================
+// 玩家更新
 // =====================
 function updatePlayers(){
-  players = document.getElementById("playerPool")
+  players=document.getElementById("playerPool")
     .value.split("\n")
     .map(x=>x.trim())
     .filter(x=>x);
+
+  if(players.length<2){
+    showMsg("⚠ 玩家至少需要 2 人","#ff5555");
+  }else{
+    showMsg("✔ 玩家已更新");
+  }
 
   refreshDropdowns();
 }
 
 // =====================
-// 更新所有下拉
+// 下拉更新
 // =====================
 function refreshDropdowns(){
   document.querySelectorAll(".playerSelect").forEach(sel=>{
-    const current = sel.value;
+    const current=sel.value;
 
-    sel.innerHTML = players.map(p=>
+    sel.innerHTML=players.map(p=>
       `<option value="${p}">${p}</option>`
     ).join("");
 
@@ -114,21 +137,18 @@ function refreshDropdowns(){
 // 新增列
 // =====================
 function addRow(){
-  const tbody = document.getElementById("tableBody");
+  const tbody=document.getElementById("tableBody");
 
-  const row = document.createElement("tr");
+  const row=document.createElement("tr");
 
   row.innerHTML=`
     <td><input></td>
-
     <td>
       <select class="playerSelect">
         ${players.map(p=>`<option value="${p}">${p}</option>`).join("")}
       </select>
     </td>
-
     <td><input type="number"></td>
-
     <td><button onclick="this.parentElement.parentElement.remove()">刪除</button></td>
   `;
 
@@ -138,9 +158,48 @@ function addRow(){
 addRow();
 
 // =====================
-// 計算
+// 防呆檢查
+// =====================
+function validate(){
+
+  let ok=true;
+
+  document.querySelectorAll("#tableBody tr").forEach(row=>{
+
+    const item=row.children[0].querySelector("input");
+    const amount=row.children[2].querySelector("input");
+
+    item.classList.remove("error");
+    amount.classList.remove("error");
+
+    if(!item.value){
+      item.classList.add("error");
+      ok=false;
+    }
+
+    if(!amount.value || isNaN(Number(amount.value))){
+      amount.classList.add("error");
+      ok=false;
+    }
+  });
+
+  return ok;
+}
+
+// =====================
+// 計算（安全版）
 // =====================
 function calculate(){
+
+  if(players.length<2){
+    showMsg("⚠ 玩家不足 2 人","#ff5555");
+    return;
+  }
+
+  if(!validate()){
+    showMsg("⚠ 請修正紅色錯誤欄位","#ff5555");
+    return;
+  }
 
   let data=[];
 
@@ -154,21 +213,26 @@ function calculate(){
     }
   });
 
-  let spend={}, income={};
+  if(data.length===0){
+    showMsg("⚠ 沒有有效資料","#ff5555");
+    return;
+  }
+
+  let spend={},income={};
   players.forEach(p=>{
     spend[p]=0;
     income[p]=0;
   });
 
-  // 支出
   data.forEach(r=>{
     spend[r[1]]+=r[2];
   });
 
-  // 收入
+  const divisor=players.length-1;
+
   data.forEach(r=>{
-    const share=Math.floor(r[2]/(players.length-1));
-    const remainder=r[2]-share*(players.length-1);
+    const share=Math.floor(r[2]/divisor);
+    const remainder=r[2]-share*divisor;
 
     players.forEach(p=>{
       if(p!==r[1]) income[p]+=share;
@@ -177,9 +241,6 @@ function calculate(){
     income[r[1]]+=remainder;
   });
 
-  // =====================
-  // 計算轉帳
-  // =====================
   let balances={};
   players.forEach(p=>{
     balances[p]=income[p]-spend[p];
@@ -213,19 +274,16 @@ function calculate(){
     if(balances[d]===0) debtors.shift();
   }
 
-  // =====================
-  // 矩陣輸出（你要的重點）
-  // =====================
-
   document.getElementById("reportArea").innerHTML = buildMatrix(transfers);
+
+  showMsg("✔ 計算完成");
 }
 
 // =====================
-// 矩陣報表（核心）
+// 矩陣輸出
 // =====================
 function buildMatrix(transfers){
 
-  // 付款人（只顯示有付款的）
   let payersSet=new Set();
   let receiversSet=new Set();
 
@@ -259,11 +317,9 @@ function buildMatrix(transfers){
 
   receivers.forEach(r=>{
     html+=`<tr><th>${r}</th>`;
-
     payers.forEach(p=>{
       html+=`<td>${matrix[r][p]||""}</td>`;
     });
-
     html+=`</tr>`;
   });
 
@@ -273,19 +329,17 @@ function buildMatrix(transfers){
 }
 
 // =====================
-// 產圖
+// 圖片
 // =====================
 function exportImage(){
-  const target=document.getElementById("reportArea");
-
-  html2canvas(target,{
-    backgroundColor:"#ffffff",
+  html2canvas(document.getElementById("reportArea"),{
+    backgroundColor:"#fff",
     scale:2
   }).then(canvas=>{
-    const link=document.createElement("a");
-    link.download="boss-matrix.png";
-    link.href=canvas.toDataURL("image/png");
-    link.click();
+    const a=document.createElement("a");
+    a.download="boss-matrix.png";
+    a.href=canvas.toDataURL();
+    a.click();
   });
 }
 

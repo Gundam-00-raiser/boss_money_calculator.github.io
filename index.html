@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS結算系統</title>
+<title>BOSS 分帳系統</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -21,14 +21,11 @@ textarea, input, select, button {
   margin:4px;
 }
 
-/* =========================
-   表格基礎
-========================= */
+/* 表格 */
 table {
   border-collapse: collapse;
   margin-top:10px;
   background:#1f1f1f;
-  width:auto;
 }
 
 th, td {
@@ -38,9 +35,7 @@ th, td {
   min-width:80px;
 }
 
-/* =========================
-   UI區塊
-========================= */
+/* 報表區 */
 #reportArea {
   display:flex;
   flex-direction:column;
@@ -49,7 +44,6 @@ th, td {
   max-width:1100px;
 }
 
-/* 卡片 */
 #reportArea table {
   background:white;
   color:black;
@@ -60,7 +54,6 @@ th, td {
   overflow:hidden;
 }
 
-/* header 更深灰 */
 #reportArea th {
   background:#7a7a7a;
   color:#111;
@@ -74,13 +67,15 @@ th, td {
 
 <body>
 
-<h2>🏦 BOSS結算系統</h2>
+<h2>🏦 BOSS 分帳系統</h2>
 
-<h3>👥 玩家</h3>
+<h3>👥 玩家資料庫</h3>
+
 <textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
+
 <button onclick="setPlayers()">更新玩家</button>
 
-<h3>📦 競標</h3>
+<h3>📦 競標資料</h3>
 
 <table>
 <thead>
@@ -105,35 +100,63 @@ th, td {
 <script>
 
 /* =========================
-   LAYER 0：STATE
+   STATE
 ========================= */
 let players = [];
-let items = [];
 
 /* =========================
-   PLAYER
+   玩家更新（已修正）
 ========================= */
 function setPlayers() {
+
   players = document.getElementById("playerPool")
     .value.split("\n")
     .map(x => x.trim())
     .filter(x => x);
+
+  refreshAllSelects(); // 🔥 關鍵修正
 }
 
 /* =========================
-   UI ROW
+   全部 select 同步
+========================= */
+function refreshAllSelects() {
+
+  document.querySelectorAll("#rows tr select").forEach(sel => {
+
+    const current = sel.value;
+
+    sel.innerHTML = players.length
+      ? players.map(p => `<option value="${p}">${p}</option>`).join("")
+      : `<option disabled>請先輸入玩家</option>`;
+
+    if (players.includes(current)) {
+      sel.value = current;
+    }
+  });
+}
+
+/* =========================
+   新增列（已修正）
 ========================= */
 function addRow() {
+
   const tr = document.createElement("tr");
 
   tr.innerHTML = `
     <td><input></td>
+
     <td>
       <select>
-        ${players.map(p => `<option>${p}</option>`).join("")}
+        ${players.length
+          ? players.map(p => `<option value="${p}">${p}</option>`).join("")
+          : `<option disabled>請先輸入玩家</option>`
+        }
       </select>
     </td>
+
     <td><input type="number"></td>
+
     <td><button onclick="this.parentElement.parentElement.remove()">X</button></td>
   `;
 
@@ -143,7 +166,7 @@ function addRow() {
 addRow();
 
 /* =========================
-   LAYER 1：Ledger（原始帳本）
+   Ledger
 ========================= */
 function buildLedger() {
 
@@ -164,7 +187,7 @@ function buildLedger() {
 }
 
 /* =========================
-   LAYER 2：Settlement Engine
+   Settlement
 ========================= */
 function settle(ledger) {
 
@@ -175,13 +198,12 @@ function settle(ledger) {
     income[p] = 0;
   });
 
-  // spend
   ledger.forEach(l => spend[l.winner] += l.amount);
 
-  // income
   const div = players.length - 1;
 
   ledger.forEach(l => {
+
     const share = Math.floor(l.amount / div);
     const rem = l.amount - share * div;
 
@@ -192,11 +214,11 @@ function settle(ledger) {
     income[l.winner] += rem;
   });
 
-  let balance = {};
-  players.forEach(p => balance[p] = income[p] - spend[p]);
+  let bal = {};
+  players.forEach(p => bal[p] = income[p] - spend[p]);
 
-  let creditors = players.filter(p => balance[p] > 0);
-  let debtors = players.filter(p => balance[p] < 0);
+  let creditors = players.filter(p => bal[p] > 0);
+  let debtors = players.filter(p => bal[p] < 0);
 
   let transfers = [];
 
@@ -205,24 +227,24 @@ function settle(ledger) {
     let c = creditors[0];
     let d = debtors[0];
 
-    let pay = Math.min(balance[c], -balance[d]);
+    let pay = Math.min(bal[c], -bal[d]);
 
     transfers.push({ from: d, to: c, amount: pay });
 
-    balance[c] -= pay;
-    balance[d] += pay;
+    bal[c] -= pay;
+    bal[d] += pay;
 
-    if (balance[c] === 0) creditors.shift();
-    if (balance[d] === 0) debtors.shift();
+    if (bal[c] === 0) creditors.shift();
+    if (bal[d] === 0) debtors.shift();
   }
 
   return { spend, income, transfers };
 }
 
 /* =========================
-   OPTIONAL OPTIMIZER（不破壞數學）
+   optimizer（穩定版）
 ========================= */
-function optimize(transfers, min = 50) {
+function optimize(transfers) {
 
   let map = {};
 
@@ -236,20 +258,14 @@ function optimize(transfers, min = 50) {
   Object.keys(map).forEach(k => {
 
     let [from, to] = k.split("->");
-    let amt = map[k];
-
-    if (amt < min) {
-      result.push({ from, to, amount: amt });
-    } else {
-      result.push({ from, to, amount: amt });
-    }
+    result.push({ from, to, amount: map[k] });
   });
 
   return result;
 }
 
 /* =========================
-   LAYER 3：UI
+   UI render
 ========================= */
 function render(spend, income, transfers) {
 
@@ -268,7 +284,6 @@ function render(spend, income, transfers) {
   html += "</table>";
 
   let map = {};
-
   transfers.forEach(t => {
     let k = t.from + "->" + t.to;
     map[k] = (map[k] || 0) + t.amount;
@@ -283,14 +298,11 @@ function render(spend, income, transfers) {
   html += "</tr>";
 
   receivers.forEach(r => {
-
     html += `<tr><th>${r}</th>`;
-
     payers.forEach(p => {
-      let key = r + "->" + p;
-      html += `<td>${map[key] || ""}</td>`;
+      let k = r + "->" + p;
+      html += `<td>${map[k] || ""}</td>`;
     });
-
     html += "</tr>";
   });
 
@@ -300,7 +312,7 @@ function render(spend, income, transfers) {
 }
 
 /* =========================
-   RUN
+   run
 ========================= */
 function runSettlement() {
 
@@ -308,13 +320,13 @@ function runSettlement() {
 
   const { spend, income, transfers } = settle(ledger);
 
-  const optimized = optimize(transfers, 50);
+  const optimized = optimize(transfers);
 
   render(spend, income, optimized);
 }
 
 /* =========================
-   IMAGE
+   image
 ========================= */
 function exportImage() {
 

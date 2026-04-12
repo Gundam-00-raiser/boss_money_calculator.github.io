@@ -2,11 +2,11 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳明細v24</title>
+<title>BOSS 分帳 v30</title>
 
 <style>
 body{
-  font-family:Arial;
+  font-family: Arial;
   background:#111;
   color:#fff;
   padding:20px;
@@ -27,7 +27,7 @@ th,td{
   border:1px solid #444;
   padding:6px;
   text-align:center;
-  min-width:70px;
+  min-width:90px;
 }
 
 th{
@@ -38,200 +38,202 @@ th{
 
 <body>
 
-<h2>🏦 BOSS 分帳明細v24</h2>
+<h2>🏦 BOSS 分帳 v30（穩定版）</h2>
 
-<h3>👥 玩家</h3>
-<textarea id="playersInput" rows="5"></textarea><br>
-<button onclick="updatePlayers()">更新玩家</button>
+<h3>👥 玩家名單</h3>
+<textarea id="players" rows="5"></textarea><br>
+<button onclick="setPlayers()">更新玩家</button>
 
 <h3>📦 結標</h3>
 
 <table>
 <thead>
-<tr><th>物品</th><th>得標者</th><th>金額</th><th></th></tr>
+<tr>
+<th>物品</th>
+<th>得標者</th>
+<th>金額</th>
+<th></th>
+</tr>
 </thead>
 <tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">新增</button>
+<button onclick="addRow()">新增列</button>
 <button onclick="calc()">計算</button>
 
-<div id="report"></div>
+<div id="out"></div>
 
 <script>
 
-let players=[];
+let P = [];
 
-function updatePlayers(){
-  players=document.getElementById("playersInput")
+/* =========================
+   玩家初始化
+========================= */
+function setPlayers(){
+  P = document.getElementById("players")
     .value.split("\n")
-    .map(x=>x.trim())
-    .filter(x=>x);
-  refresh();
+    .map(x => x.trim())
+    .filter(x => x);
 }
 
-function refresh(){
-  document.querySelectorAll(".winner").forEach(sel=>{
-    let v=sel.value;
-    sel.innerHTML=players.map(p=>`<option>${p}</option>`).join("");
-    sel.value=v;
-  });
-}
-
+/* =========================
+   新增列
+========================= */
 function addRow(){
-  let tr=document.createElement("tr");
-  tr.innerHTML=`
+  let tr = document.createElement("tr");
+
+  tr.innerHTML = `
     <td><input></td>
-    <td><select class="winner">${players.map(p=>`<option>${p}</option>`).join("")}</select></td>
+    <td>
+      <select class="winner">
+        ${P.map(p=>`<option>${p}</option>`).join("")}
+      </select>
+    </td>
     <td><input type="number"></td>
     <td><button onclick="this.parentElement.parentElement.remove()">X</button></td>
   `;
+
   document.getElementById("rows").appendChild(tr);
 }
+
 addRow();
 
+/* =========================
+   讀取資料
+========================= */
 function getData(){
-  let data=[];
+  let data = [];
+
   document.querySelectorAll("#rows tr").forEach(r=>{
-    let item=r.children[0].querySelector("input").value;
-    let w=r.children[1].querySelector("select").value;
-    let a=Number(r.children[2].querySelector("input").value);
-    if(item&&w&&a) data.push({item,winner:w,amount:a});
+    let item = r.children[0].querySelector("input").value;
+    let w = r.children[1].querySelector("select").value;
+    let a = Number(r.children[2].querySelector("input").value);
+
+    if(item && w && a){
+      data.push({item, winner:w, amount:a});
+    }
   });
+
   return data;
 }
 
-/* =======================
-   1. 收支計算（核心）
-======================= */
-function compute(data){
+/* =========================
+   STEP 1：Block 建立（不拆）
+========================= */
+function buildBlocks(data){
 
-  let income={}, spend={};
-  players.forEach(p=>{
-    income[p]=0;
-    spend[p]=0;
-  });
+  let blocks = [];
 
-  data.forEach(d=>{
-    let n=players.length-1;
-    let share=Math.floor(d.amount/n);
-    let rem=d.amount-share*n;
+  data.forEach(d => {
 
-    spend[d.winner]+=d.amount;
+    let n = P.length - 1;
+    let base = Math.floor(d.amount / n);
+    let rem = d.amount - base * n;
 
-    players.forEach(p=>{
-      if(p!==d.winner) income[p]+=share;
+    let receivers = P.filter(p => p !== d.winner);
+
+    receivers.forEach(p=>{
+      blocks.push({
+        item: d.item,
+        from: d.winner,
+        to: p,
+        amount: base
+      });
     });
 
-    // residual 暫存（不合併）
-    let targets=players.filter(p=>p!==d.winner);
-    let i=0;
-    while(rem>0){
-      let add=Math.min(rem,50);
-      income[targets[i%targets.length]]+=add;
-      rem-=add;
-      i++;
+    // residual（只保留，不拆碎）
+    if(rem > 0){
+      blocks.push({
+        item: d.item,
+        from: d.winner,
+        to: "RESIDUAL",
+        amount: rem
+      });
     }
   });
 
-  let net={};
-  players.forEach(p=>{
-    net[p]=income[p]-spend[p];
-  });
-
-  return {income,spend,net};
+  return blocks;
 }
 
-/* =======================
-   2. 轉帳矩陣（流水線 + 可追溯）
-======================= */
-function buildMatrix(net){
+/* =========================
+   STEP 2：A/B 順序支付
+========================= */
+function allocate(blocks){
 
-  let payers=players.filter(p=>net[p]<0);
-  let receivers=players.filter(p=>net[p]>0);
-
-  let payLeft={}, recLeft={};
-
-  payers.forEach(p=>payLeft[p]=-net[p]);
-  receivers.forEach(p=>recLeft[p]=net[p]);
-
-  let matrix={};
-  receivers.forEach(r=>{
-    matrix[r]={};
-    payers.forEach(p=>matrix[r][p]=[]);
+  let A = {}, B = {};
+  P.forEach(p=>{
+    A[p] = [];
+    B[p] = [];
   });
 
-  receivers.forEach(r=>{
+  A["RESIDUAL"] = [];
+  B["RESIDUAL"] = [];
 
-    let need=recLeft[r];
+  let Aused = 0;
+  let limitA = 2500;   // A付款上限
+  let limitB = 1265;   // B付款上限
 
-    for(let p of payers){
+  blocks.forEach(b=>{
 
-      if(need<=0) break;
-      if(payLeft[p]<=0) continue;
+    if(b.to === "RESIDUAL"){
+      // residual 永遠放 B 收尾
+      B["RESIDUAL"].push(b.amount);
+      return;
+    }
 
-      let pay=Math.min(payLeft[p],need);
-
-      // 🔥 防碎帳
-      if(pay<50 && need>50) continue;
-
-      matrix[r][p].push(pay);
-
-      payLeft[p]-=pay;
-      need-=pay;
+    // A 優先完整吃 block
+    if(Aused + b.amount <= limitA){
+      A[b.to].push(b.amount);
+      Aused += b.amount;
+    }else{
+      B[b.to].push(b.amount);
     }
   });
 
-  return {matrix,payers,receivers};
+  return {A, B};
 }
 
-/* =======================
-   3. Render
-======================= */
-function render(res,m){
+/* =========================
+   STEP 3：輸出矩陣
+========================= */
+function render(res){
 
-  let html=`<h3>📊 結算</h3><table>
-  <tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>`;
+  let html = `<h3>📊 轉帳矩陣（v30）</h3><table>`;
 
-  players.forEach(p=>{
-    html+=`<tr>
-    <td>${p}</td>
-    <td>${res.spend[p]}</td>
-    <td>${res.income[p]}</td>
-    <td>${res.net[p]}</td>
-    </tr>`;
+  html += `<tr><th>收款人</th><th>A</th><th>B</th></tr>`;
+
+  P.forEach(p=>{
+    html += `
+      <tr>
+        <td>${p}</td>
+        <td>${(res.A[p]||[]).join("<br>") || "-"}</td>
+        <td>${(res.B[p]||[]).join("<br>") || "-"}</td>
+      </tr>
+    `;
   });
 
-  html+=`</table>`;
+  html += `
+    <tr>
+      <td>RESIDUAL</td>
+      <td>-</td>
+      <td>${(res.B["RESIDUAL"]||[]).join("<br>") || "-"}</td>
+    </tr>
+  `;
 
-  html+=`<h3>💸 轉帳明細</h3><table><tr><th>收款人\\付款人</th>`;
+  html += `</table>`;
 
-  m.payers.forEach(p=>html+=`<th>${p}</th>`);
-  html+=`</tr>`;
-
-  m.receivers.forEach(r=>{
-    html+=`<tr><th>${r}</th>`;
-    m.payers.forEach(p=>{
-      html+=`<td>${(m.matrix[r][p]||[]).join("<br>")}</td>`;
-    });
-    html+=`</tr>`;
-  });
-
-  html+=`</table>`;
-
-  document.getElementById("report").innerHTML=html;
+  document.getElementById("out").innerHTML = html;
 }
 
-/* =======================
-   4. 主流程
-======================= */
+/* =========================
+   MAIN
+========================= */
 function calc(){
-
-  let data=getData();
-  let res=compute(data);
-  let m=buildMatrix(res.net);
-
-  render(res,m);
+  let data = getData();
+  let blocks = buildBlocks(data);
+  let res = allocate(blocks);
+  render(res);
 }
 
 </script>

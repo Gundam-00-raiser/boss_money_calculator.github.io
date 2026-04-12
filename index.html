@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳 GitHub版（GAS移植）</title>
+<title>分帳系統 FINAL（穩定無碎帳版）</title>
 
 <style>
 body{
@@ -21,6 +21,7 @@ table{
   border-collapse:collapse;
   margin-top:10px;
   background:#1e1e1e;
+  width:100%;
 }
 
 th,td{
@@ -33,19 +34,21 @@ th{
   background:#2a2a2a;
 }
 
-select{padding:4px;}
+select{
+  padding:4px;
+}
 </style>
 </head>
 
 <body>
 
-<h2>🏦 BOSS 分帳（GitHub GAS移植版）</h2>
+<h2>🏦 BOSS 分帳 FINAL（穩定版 / 無碎帳）</h2>
 
-<h3>👥 玩家名單</h3>
+<h3>👥 玩家名單（每行一個）</h3>
 <textarea id="players" rows="5"></textarea><br>
 <button onclick="setPlayers()">更新玩家</button>
 
-<h3>📦 結標</h3>
+<h3>📦 結標輸入</h3>
 
 <table>
 <thead>
@@ -53,7 +56,6 @@ select{padding:4px;}
 <th>物品</th>
 <th>得標者</th>
 <th>金額</th>
-<th></th>
 </tr>
 </thead>
 <tbody id="rows"></tbody>
@@ -76,23 +78,6 @@ function setPlayers(){
     .value.split("\n")
     .map(x => x.trim())
     .filter(x => x);
-
-  refreshSelects();
-}
-
-/* =========================
-   dropdown 同步
-========================= */
-function refreshSelects(){
-  document.querySelectorAll(".winner").forEach(sel=>{
-    let cur = sel.value;
-
-    sel.innerHTML = P.map(p=>`<option value="${p}">${p}</option>`).join("");
-
-    if(P.includes(cur)){
-      sel.value = cur;
-    }
-  });
 }
 
 /* =========================
@@ -105,19 +90,18 @@ function addRow(){
   tr.innerHTML = `
     <td><input></td>
     <td>
-      <select class="winner">
-        ${P.map(p=>`<option value="${p}">${p}</option>`).join("")}
+      <select>
+        ${P.map(p => `<option value="${p}">${p}</option>`).join("")}
       </select>
     </td>
     <td><input type="number"></td>
-    <td><button onclick="this.parentElement.parentElement.remove()">X</button></td>
   `;
 
   document.getElementById("rows").appendChild(tr);
 }
 
 /* =========================
-   讀取結標資料
+   讀取資料
 ========================= */
 function getData(){
 
@@ -137,16 +121,16 @@ function getData(){
 }
 
 /* =========================
-   GAS 核心移植（完全保留）
+   GAS 原始核心（完全保留）
 ========================= */
-function calcSettlement(data){
+function calcNet(data){
 
-  let spend = {};
   let income = {};
+  let spend = {};
 
   P.forEach(p=>{
-    spend[p] = 0;
     income[p] = 0;
+    spend[p] = 0;
   });
 
   data.forEach(d=>{
@@ -154,10 +138,8 @@ function calcSettlement(data){
     let n = P.length - 1;
     let share = d.amount / n;
 
-    // winner 支出
     spend[d.winner] += d.amount;
 
-    // 其他人均分收入
     P.forEach(p=>{
       if(p !== d.winner){
         income[p] += share;
@@ -166,6 +148,7 @@ function calcSettlement(data){
   });
 
   let net = {};
+
   P.forEach(p=>{
     net[p] = income[p] - spend[p];
   });
@@ -174,7 +157,8 @@ function calcSettlement(data){
 }
 
 /* =========================
-   轉帳矩陣（GAS同邏輯）
+   🔥 修正版轉帳矩陣（消除碎帳）
+   核心：bucket matching + sort + merge
 ========================= */
 function buildMatrix(net){
 
@@ -182,32 +166,43 @@ function buildMatrix(net){
   let debtors = [];
 
   P.forEach(p=>{
-    if(net[p] > 0) creditors.push({p,amt:net[p]});
-    if(net[p] < 0) debtors.push({p,amt:-net[p]});
+    if(net[p] > 0) creditors.push([p, net[p]]);
+    if(net[p] < 0) debtors.push([p, -net[p]]);
   });
+
+  // 🔥 重要：排序（避免碎帳）
+  creditors.sort((a,b)=>b[1]-a[1]);
+  debtors.sort((a,b)=>b[1]-a[1]);
 
   let res = [];
 
-  let i = 0, j = 0;
+  let i = 0;
+  let j = 0;
 
   while(i < creditors.length && j < debtors.length){
 
-    let c = creditors[i];
-    let d = debtors[j];
+    let cName = creditors[i][0];
+    let cAmt = creditors[i][1];
 
-    let pay = Math.min(c.amt, d.amt);
+    let dName = debtors[j][0];
+    let dAmt = debtors[j][1];
 
-    res.push({
-      from: d.p,
-      to: c.p,
-      amount: Number(pay.toFixed(2))
-    });
+    let pay = Math.min(cAmt, dAmt);
 
-    c.amt -= pay;
-    d.amt -= pay;
+    if(pay > 0){
 
-    if(c.amt === 0) i++;
-    if(d.amt === 0) j++;
+      res.push({
+        from: dName,
+        to: cName,
+        amount: Math.round(pay * 100) / 100
+      });
+
+      creditors[i][1] -= pay;
+      debtors[j][1] -= pay;
+    }
+
+    if(creditors[i][1] === 0) i++;
+    if(debtors[j][1] === 0) j++;
   }
 
   return res;
@@ -227,7 +222,7 @@ function render(net, matrix){
 
   html += "</table>";
 
-  html += "<h3>💸 轉帳矩陣</h3><table>";
+  html += "<h3>💸 轉帳矩陣（已修正碎帳）</h3><table>";
   html += "<tr><th>From</th><th>To</th><th>Amount</th></tr>";
 
   matrix.forEach(m=>{
@@ -244,10 +239,8 @@ function render(net, matrix){
 ========================= */
 function calc(){
   let data = getData();
-
-  let net = calcSettlement(data);   // ← 完全 GAS 邏輯
-  let matrix = buildMatrix(net);    // ← GAS matrix
-
+  let net = calcNet(data);
+  let matrix = buildMatrix(net);
   render(net, matrix);
 }
 

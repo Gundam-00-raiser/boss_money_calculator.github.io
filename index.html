@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳系統V02</title>
+<title>BOSS 分帳系統V03</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -37,6 +37,7 @@ th, td {
   flex-direction:column;
   align-items:flex-start;
   gap:20px;
+  max-width:1100px;
 }
 
 #reportArea table {
@@ -59,7 +60,7 @@ th, td {
 
 <body>
 
-<h2>🏦 BOSS 分帳系統</h2>
+<h2>🏦 BOSS 分帳測試01</h2>
 
 <textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
 <button onclick="setPlayers()">更新玩家</button>
@@ -84,7 +85,7 @@ th, td {
 let players = [];
 
 /* =========================
-   更新玩家
+   玩家更新
 ========================= */
 function setPlayers() {
 
@@ -97,19 +98,20 @@ function setPlayers() {
 }
 
 /* =========================
-   更新 select
+   select 同步（安全版）
 ========================= */
 function refreshAllSelects() {
 
   document.querySelectorAll("#rows tr select").forEach(sel => {
 
-    const current = sel.value;
+    const oldValue = sel.value;
 
-    sel.innerHTML = players.length
-      ? players.map(p => `<option value="${p}">${p}</option>`).join("")
-      : `<option disabled>請先輸入玩家</option>`;
+    sel.innerHTML = `
+      <option value="">請選擇得標者</option>
+      ${players.map(p => `<option value="${p}">${p}</option>`).join("")}
+    `;
 
-    if (players.includes(current)) sel.value = current;
+    sel.value = players.includes(oldValue) ? oldValue : "";
   });
 }
 
@@ -125,14 +127,12 @@ function addRow() {
 
     <td>
       <select>
-        ${players.length
-          ? players.map(p => `<option value="${p}">${p}</option>`).join("")
-          : `<option disabled>請先輸入玩家</option>`
-        }
+        <option value="">請選擇得標者</option>
+        ${players.map(p => `<option value="${p}">${p}</option>`).join("")}
       </select>
     </td>
 
-    <td><input type="number"></td>
+    <td><input type="number" placeholder="金額"></td>
 
     <td><button onclick="this.parentElement.parentElement.remove()">X</button></td>
   `;
@@ -219,7 +219,7 @@ function settle(ledger) {
 }
 
 /* =========================
-   optimizer（穩定）
+   optimizer（穩定合併）
 ========================= */
 function optimize(transfers) {
 
@@ -241,7 +241,7 @@ function optimize(transfers) {
 }
 
 /* =========================
-   UI RENDER（已修正矩陣）
+   UI RENDER（核心修正完成版）
 ========================= */
 function render(spend, income, transfers) {
 
@@ -260,21 +260,21 @@ function render(spend, income, transfers) {
   html += "</table>";
 
   /* =========================
-     🔥 MATRIX FIX CORE
+     MATRIX（完全穩定版）
   ========================= */
 
   let map = {};
 
-  // 初始化矩陣（關鍵修復）
+  // 🔥 UI結構完全固定 players
   players.forEach(r => {
     players.forEach(p => {
       map[r + "->" + p] = "";
     });
   });
 
+  // 填入轉帳
   transfers.forEach(t => {
-    let k = t.from + "->" + t.to;
-    map[k] = t.amount;
+    map[t.from + "->" + t.to] = t.amount;
   });
 
   html += `<h3>💸 轉帳明細</h3><table><tr><th></th>`;
@@ -283,11 +283,11 @@ function render(spend, income, transfers) {
   html += "</tr>";
 
   players.forEach(r => {
+
     html += `<tr><th>${r}</th>`;
 
     players.forEach(p => {
-      let k = r + "->" + p;
-      html += `<td>${map[k] || ""}</td>`;
+      html += `<td>${map[r + "->" + p] || ""}</td>`;
     });
 
     html += "</tr>";
@@ -313,7 +313,7 @@ function runSettlement() {
 }
 
 /* =========================
-   IMAGE
+   EXPORT IMAGE
 ========================= */
 function exportImage() {
 
@@ -322,10 +322,10 @@ function exportImage() {
   html2canvas(target, {
     backgroundColor:"#fff",
     scale:2
-  }).then(c => {
+  }).then(canvas => {
 
     let a = document.createElement("a");
-    a.href = c.toDataURL();
+    a.href = canvas.toDataURL("image/png");
     a.download = "matrix.png";
     a.click();
   });

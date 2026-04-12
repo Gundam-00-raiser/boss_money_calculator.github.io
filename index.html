@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳系統</title>
+<title>BOSS 分帳系統V02</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -14,14 +14,11 @@ body {
   padding:20px;
 }
 
-h2,h3 { margin-top:20px; }
-
 textarea, input, select, button {
   padding:6px;
   margin:4px;
 }
 
-/* 表格 */
 table {
   border-collapse: collapse;
   margin-top:10px;
@@ -35,13 +32,11 @@ th, td {
   min-width:80px;
 }
 
-/* 報表區 */
 #reportArea {
   display:flex;
   flex-direction:column;
   align-items:flex-start;
   gap:20px;
-  max-width:1100px;
 }
 
 #reportArea table {
@@ -49,9 +44,6 @@ th, td {
   color:black;
   font-size:12px;
   width:max-content;
-  box-shadow:0 2px 10px rgba(0,0,0,0.35);
-  border-radius:6px;
-  overflow:hidden;
 }
 
 #reportArea th {
@@ -69,27 +61,14 @@ th, td {
 
 <h2>🏦 BOSS 分帳系統</h2>
 
-<h3>👥 玩家資料庫</h3>
-
 <textarea id="playerPool" rows="5" placeholder="A&#10;B&#10;C"></textarea>
-
 <button onclick="setPlayers()">更新玩家</button>
 
-<h3>📦 競標資料</h3>
-
 <table>
-<thead>
-<tr>
-  <th>物品</th>
-  <th>得標者</th>
-  <th>金額</th>
-  <th></th>
-</tr>
-</thead>
 <tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">新增</button>
+<button onclick="addRow()">新增列</button>
 <button onclick="runSettlement()">計算</button>
 <button onclick="exportImage()">輸出圖片</button>
 
@@ -105,7 +84,7 @@ th, td {
 let players = [];
 
 /* =========================
-   玩家更新（已修正）
+   更新玩家
 ========================= */
 function setPlayers() {
 
@@ -114,11 +93,11 @@ function setPlayers() {
     .map(x => x.trim())
     .filter(x => x);
 
-  refreshAllSelects(); // 🔥 關鍵修正
+  refreshAllSelects();
 }
 
 /* =========================
-   全部 select 同步
+   更新 select
 ========================= */
 function refreshAllSelects() {
 
@@ -130,21 +109,19 @@ function refreshAllSelects() {
       ? players.map(p => `<option value="${p}">${p}</option>`).join("")
       : `<option disabled>請先輸入玩家</option>`;
 
-    if (players.includes(current)) {
-      sel.value = current;
-    }
+    if (players.includes(current)) sel.value = current;
   });
 }
 
 /* =========================
-   新增列（已修正）
+   新增列
 ========================= */
 function addRow() {
 
   const tr = document.createElement("tr");
 
   tr.innerHTML = `
-    <td><input></td>
+    <td><input placeholder="物品"></td>
 
     <td>
       <select>
@@ -242,7 +219,7 @@ function settle(ledger) {
 }
 
 /* =========================
-   optimizer（穩定版）
+   optimizer（穩定）
 ========================= */
 function optimize(transfers) {
 
@@ -256,7 +233,6 @@ function optimize(transfers) {
   let result = [];
 
   Object.keys(map).forEach(k => {
-
     let [from, to] = k.split("->");
     result.push({ from, to, amount: map[k] });
   });
@@ -265,7 +241,7 @@ function optimize(transfers) {
 }
 
 /* =========================
-   UI render
+   UI RENDER（已修正矩陣）
 ========================= */
 function render(spend, income, transfers) {
 
@@ -283,26 +259,37 @@ function render(spend, income, transfers) {
 
   html += "</table>";
 
+  /* =========================
+     🔥 MATRIX FIX CORE
+  ========================= */
+
   let map = {};
+
+  // 初始化矩陣（關鍵修復）
+  players.forEach(r => {
+    players.forEach(p => {
+      map[r + "->" + p] = "";
+    });
+  });
+
   transfers.forEach(t => {
     let k = t.from + "->" + t.to;
-    map[k] = (map[k] || 0) + t.amount;
+    map[k] = t.amount;
   });
 
   html += `<h3>💸 轉帳明細</h3><table><tr><th></th>`;
 
-  let payers = [...new Set(transfers.map(t => t.from))];
-  let receivers = [...new Set(transfers.map(t => t.to))];
-
-  payers.forEach(p => html += `<th>${p}</th>`);
+  players.forEach(p => html += `<th>${p}</th>`);
   html += "</tr>";
 
-  receivers.forEach(r => {
+  players.forEach(r => {
     html += `<tr><th>${r}</th>`;
-    payers.forEach(p => {
+
+    players.forEach(p => {
       let k = r + "->" + p;
       html += `<td>${map[k] || ""}</td>`;
     });
+
     html += "</tr>";
   });
 
@@ -312,7 +299,7 @@ function render(spend, income, transfers) {
 }
 
 /* =========================
-   run
+   RUN
 ========================= */
 function runSettlement() {
 
@@ -326,7 +313,7 @@ function runSettlement() {
 }
 
 /* =========================
-   image
+   IMAGE
 ========================= */
 function exportImage() {
 

@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BOSS 分帳 v12（約束最終版）</title>
+<title>BOSS 分帳 v13（穩定矩陣版）</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
@@ -29,7 +29,7 @@ th, td {
   border:1px solid #444;
   padding:6px;
   text-align:center;
-  min-width:90px;
+  min-width:80px;
 }
 
 h3 { margin-top:20px; }
@@ -42,7 +42,7 @@ h3 { margin-top:20px; }
 
 <body>
 
-<h2>🏦 BOSS 分帳 v12（最終約束版）</h2>
+<h2>🏦 BOSS 分帳 v13（穩定矩陣版）</h2>
 
 <!-- 玩家 -->
 <h3>👥 玩家名單</h3>
@@ -65,7 +65,7 @@ h3 { margin-top:20px; }
 <tbody id="rows"></tbody>
 </table>
 
-<button onclick="addRow()">新增品項</button>
+<button onclick="addRow()">新增列</button>
 <button onclick="calculate()">計算</button>
 
 <hr>
@@ -77,7 +77,7 @@ h3 { margin-top:20px; }
 let players = [];
 
 /* =====================
-   玩家更新
+   更新玩家
 ===================== */
 function updatePlayers() {
 
@@ -90,7 +90,7 @@ function updatePlayers() {
 }
 
 /* =====================
-   下拉更新
+   dropdown
 ===================== */
 function refreshDropdowns() {
 
@@ -152,7 +152,7 @@ function getData() {
 }
 
 /* =====================
-   核心：逐物品分攤
+   ledger（核心）
 ===================== */
 function computeLedger(data) {
 
@@ -170,17 +170,14 @@ function computeLedger(data) {
     const share = Math.floor(d.amount / n);
     let remainder = d.amount - share * n;
 
-    // spend
     spend[d.winner] += d.amount;
 
-    // income
     players.forEach(p => {
       if (p !== d.winner) {
         income[p] += share;
       }
     });
 
-    // remainder buffer（不碎帳）
     distributeRemainder(d.winner, remainder, income);
   });
 
@@ -193,35 +190,84 @@ function computeLedger(data) {
 }
 
 /* =====================
-   remainder 分配（≥50限制）
+   remainder（≥50）
 ===================== */
 function distributeRemainder(winner, remainder, income) {
 
   if (remainder <= 0) return;
 
-  // 找最低收入者（不含 winner）
   let targets = players
     .filter(p => p !== winner)
     .sort((a,b) => income[a] - income[b]);
 
   let i = 0;
 
-  while (remainder >= 50 && i < targets.length) {
+  while (remainder > 0 && i < targets.length) {
 
-    let give = Math.min(remainder, 50 * Math.ceil(remainder / 50));
+    let give = Math.min(50, remainder);
 
-    // 強制 ≥50
-    if (give < 50) give = remainder;
+    if (give < 50) {
+      // 最後不足50 → 丟給最後一人
+      give = remainder;
+    }
 
     income[targets[i]] += give;
     remainder -= give;
-
     i++;
   }
 }
 
 /* =====================
-   計算
+   🔥 transfer 重建（關鍵修復）
+===================== */
+function buildTransfers(data) {
+
+  let transfers = [];
+
+  const n = players.length - 1;
+
+  data.forEach(d => {
+
+    const share = Math.floor(d.amount / n);
+
+    players.forEach(p => {
+
+      if (p !== d.winner) {
+        transfers.push({
+          from: d.winner,
+          to: p,
+          amount: share
+        });
+      }
+    });
+  });
+
+  return transfers;
+}
+
+/* =====================
+   matrix
+===================== */
+function buildMatrix(transfers) {
+
+  let matrix = {};
+
+  players.forEach(r => {
+    matrix[r] = {};
+    players.forEach(c => {
+      matrix[r][c] = 0;
+    });
+  });
+
+  transfers.forEach(t => {
+    matrix[t.from][t.to] += t.amount;
+  });
+
+  return matrix;
+}
+
+/* =====================
+   主計算
 ===================== */
 function calculate() {
 
@@ -231,15 +277,20 @@ function calculate() {
   }
 
   const data = getData();
-  const result = computeLedger(data);
 
-  render(result);
+  const ledger = computeLedger(data);
+
+  const transfers = buildTransfers(data);
+
+  const matrix = buildMatrix(transfers);
+
+  render(ledger, matrix);
 }
 
 /* =====================
    render
 ===================== */
-function render(result) {
+function render(ledger, matrix) {
 
   let html = `
   <h3>📊 結算結果</h3>
@@ -248,18 +299,38 @@ function render(result) {
   `;
 
   players.forEach(p => {
-
     html += `
       <tr>
         <td>${p}</td>
-        <td>${result.spend[p]}</td>
-        <td>${result.income[p]}</td>
-        <td>${result.net[p]}</td>
-      </tr>
-    `;
+        <td>${ledger.spend[p]}</td>
+        <td>${ledger.income[p]}</td>
+        <td>${ledger.net[p]}</td>
+      </tr>`;
   });
 
   html += "</table>";
+
+  // ===== matrix =====
+  html += `<h3>🔁 轉帳明細</h3><table><tr><th>收款人\\付款人</th>`;
+
+  players.forEach(p => {
+    html += `<th>${p}</th>`;
+  });
+
+  html += `</tr>`;
+
+  players.forEach(r => {
+
+    html += `<tr><th>${r}</th>`;
+
+    players.forEach(c => {
+      html += `<td>${matrix[r][c] || ""}</td>`;
+    });
+
+    html += `</tr>`;
+  });
+
+  html += `</table>`;
 
   document.getElementById("report").innerHTML = html;
 }

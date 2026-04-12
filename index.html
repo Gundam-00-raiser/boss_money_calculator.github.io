@@ -1,25 +1,121 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <title>BOSS 分帳計算機</title>
+<meta charset="UTF-8">
+<title>BOSS 分帳計算機</title>
+<style>
+  body { font-family: Arial; padding: 20px; background:#1e1e1e; color:#fff; }
+  textarea, input { width: 100%; margin-bottom:10px; }
+  button { padding:10px 20px; font-size:16px; }
+  table { border-collapse: collapse; margin-top:20px; }
+  td, th { border:1px solid #555; padding:8px; text-align:center; }
+</style>
 </head>
 <body>
 
-<h2>BOSS 分帳計算機</h2>
+<h2>🔥 BOSS 分帳計算機</h2>
 
-<h3>玩家（每行一個）</h3>
-<textarea id="players" rows="5"></textarea>
+<h3>👥 玩家（用逗號分隔）</h3>
+<input id="players" placeholder="A,B,C,D">
 
-<h3>競標資料（格式：物品,得標者,金額）</h3>
-<textarea id="data" rows="5"></textarea>
+<h3>📦 競標資料（每行：物品,得標者,金額）</h3>
+<textarea id="data" rows="6" placeholder="劍,A,1000&#10;盾,B,500"></textarea>
 
-<br><br>
-<button onclick="run()">計算</button>
+<button onclick="calculate()">開始計算</button>
 
-<pre id="output"></pre>
+<div id="result"></div>
 
-<script src="app.js"></script>
+<script>
+function calculate() {
+  const players = document.getElementById("players").value.split(",").map(x=>x.trim()).filter(x=>x);
+  const raw = document.getElementById("data").value.split("\n").filter(x=>x);
+
+  if (players.length < 2) {
+    alert("至少需要2位玩家");
+    return;
+  }
+
+  let data = raw.map(line => {
+    const [item, winner, amount] = line.split(",");
+    return [item, winner, Number(amount)];
+  });
+
+  let spend = {}, income = {};
+  players.forEach(p => { spend[p]=0; income[p]=0; });
+
+  // 支出
+  data.forEach(r=>{
+    if (spend[r[1]] !== undefined) spend[r[1]] += r[2];
+  });
+
+  // 收入
+  data.forEach(r=>{
+    const winner = r[1];
+    const amount = r[2];
+
+    const share = Math.floor(amount / (players.length - 1));
+    const remainder = amount - share * (players.length - 1);
+
+    players.forEach(p=>{
+      if(p!==winner) income[p]+=share;
+    });
+
+    income[winner]+=remainder;
+  });
+
+  // 淨值
+  let balances = {};
+  players.forEach(p => balances[p] = income[p] - spend[p]);
+
+  let creditors = players.filter(p => balances[p] > 0);
+  let debtors = players.filter(p => balances[p] < 0);
+
+  let transfers = [];
+
+  while (creditors.length && debtors.length) {
+    let c = creditors[0];
+    let d = debtors[0];
+
+    let pay = Math.min(balances[c], -balances[d]);
+
+    if (pay < 50) {
+      if (!(creditors.length === 1 && debtors.length === 1)) {
+        debtors.push(debtors.shift());
+        continue;
+      }
+    }
+
+    transfers.push({from:d,to:c,amount:pay});
+
+    balances[c]-=pay;
+    balances[d]+=pay;
+
+    if (balances[c]===0) creditors.shift();
+    if (balances[d]===0) debtors.shift();
+  }
+
+  render(players, spend, income, transfers);
+}
+
+function render(players, spend, income, transfers) {
+  let html = "<h3>📊 收支</h3><table><tr><th>玩家</th><th>支出</th><th>收入</th><th>淨值</th></tr>";
+
+  players.forEach(p=>{
+    const net = income[p]-spend[p];
+    html += `<tr><td>${p}</td><td>${spend[p]}</td><td>${income[p]}</td><td>${net}</td></tr>`;
+  });
+
+  html += "</table>";
+
+  html += "<h3>💸 轉帳</h3><ul>";
+  transfers.forEach(t=>{
+    html += `<li>${t.from} → ${t.to} ${t.amount}</li>`;
+  });
+  html += "</ul>";
+
+  document.getElementById("result").innerHTML = html;
+}
+</script>
 
 </body>
 </html>

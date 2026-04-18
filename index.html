@@ -3,14 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>破天分帳計算器 - </title>
+    <title>破天分帳計算器</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
         body { font-family: 'Noto Sans TC', system-ui, sans-serif; }
-        table.matrix td, table.matrix th { padding: 12px 14px; text-align: right; border: 1px solid #e5e7eb; }
+        table.matrix td, table.matrix th { 
+            padding: 12px 14px; 
+            text-align: right; 
+            border: 1px solid #e5e7eb; 
+        }
         table.matrix th { background-color: #f8fafc; font-weight: 600; }
-        table.matrix input { width: 100%; text-align: right; background: transparent; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; }
+        table.matrix select, table.matrix input { 
+            width: 100%; 
+            text-align: right; 
+            background: transparent; 
+            border: 1px solid #e2e8f0; 
+            border-radius: 6px; 
+            padding: 4px 8px; 
+        }
         .amount-zero { color: #94a3b8; }
         .matrix-total { background-color: #fefce8; font-weight: 700; }
     </style>
@@ -18,43 +29,48 @@
 <body class="bg-zinc-50">
     <div class="max-w-7xl mx-auto p-8">
         <h1 class="text-4xl font-bold text-zinc-900 mb-2">🧮 破天分帳計算器</h1>
-        <p class="text-zinc-600 mb-10">~測試中~</p>
+        <p class="text-zinc-600 mb-10">V20.5測試中</p>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- 1. 玩家名單 -->
             <div class="lg:col-span-4 bg-white rounded-3xl shadow-sm p-8">
                 <h2 class="text-xl font-semibold mb-4">1. 12位參與成員</h2>
                 <textarea id="batch-paste" rows="7" class="w-full border border-zinc-300 rounded-2xl p-5 text-sm" placeholder="一行一個人..."></textarea>
-                <button onclick="batchPastePlayers()" class="mt-4 w-full py-4 bg-indigo-600 text-white rounded-2xl font-medium">📋 批次貼上</button>
+                <button onclick="batchPastePlayers()" class="mt-4 w-full py-4 bg-indigo-600 text-white rounded-2xl font-medium">📋 新增至名單列</button>
                 <div id="players-grid" class="grid grid-cols-2 gap-3 mt-6"></div>
-                <button onclick="clearPlayers()" class="mt-6 w-full py-3.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-2xl">🗑️ 清空全部</button>
+                <button onclick="clearPlayers()" class="mt-6 w-full py-3.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-2xl">🗑️ 清空名單</button>
             </div>
 
+            <!-- 2. 結標物品 -->
             <div class="lg:col-span-8 bg-white rounded-3xl shadow-sm p-8">
                 <h2 class="text-xl font-semibold mb-4">2. 結標物品</h2>
                 <table class="w-full" id="bids-table">
                     <thead><tr class="bg-zinc-100"><th class="pl-5 text-left">物品名稱</th><th class="text-left">得標人</th><th class="text-right">金額</th><th></th></tr></thead>
                     <tbody id="bids-body"></tbody>
                 </table>
-                <button onclick="addBidRow()" class="mt-6 w-full py-5 border-2 border-dashed border-zinc-300 hover:border-indigo-400 rounded-3xl text-zinc-500 hover:text-indigo-600">+ 新增結標物品</button>
+                <button onclick="addBidRow()" class="mt-6 w-full py-5 border-2 border-dashed border-zinc-300 hover:border-indigo-400 rounded-3xl text-zinc-500 hover:text-indigo-600">+ 新增結標物品及價格</button>
             </div>
         </div>
 
         <div class="text-center mt-12">
-            <button onclick="calculate()" class="px-24 py-7 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-2xl font-bold rounded-3xl shadow-lg hover:shadow-2xl">🚀 開始計算分帳</button>
+            <button onclick="calculate()" 
+                    class="px-24 py-7 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-2xl font-bold rounded-3xl shadow-lg hover:shadow-2xl">
+                🚀 開始計算分帳
+            </button>
         </div>
 
         <div id="result" class="hidden mt-16 bg-white rounded-3xl shadow-sm p-10">
             <h2 class="text-3xl font-bold mb-8">計算結果</h2>
             <div id="summary" class="grid grid-cols-3 gap-6 mb-12"></div>
-            
+           
             <div class="mb-12">
                 <h3 class="font-semibold mb-4">👤 每位玩家明細（淨額）</h3>
                 <div id="player-stats" class="overflow-x-auto"></div>
             </div>
-            
+           
             <div>
                 <div class="flex justify-between mb-5">
-                    <h3 class="font-semibold text-lg">💸 轉帳明細表（可手動調整）</h3>
+                    <h3 class="font-semibold text-lg">💸 轉帳明細表（收款人可調整）</h3>
                     <div class="flex gap-3">
                         <button onclick="simplifyDebts()" class="px-6 py-2.5 bg-emerald-600 text-white rounded-2xl text-sm font-medium">🔄 從平均數簡化（推薦）</button>
                         <button onclick="resetMatrix()" class="px-6 py-2.5 border border-zinc-300 rounded-2xl text-sm">重置建議值</button>
@@ -79,7 +95,9 @@
                 const div = document.createElement('div');
                 div.className = 'flex items-center bg-zinc-50 rounded-2xl px-5 py-4';
                 div.innerHTML = `<div class="w-9 h-9 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center font-semibold">${i+1}</div>
-                    <input type="text" value="${name}" placeholder="姓名" class="flex-1 ml-4 bg-transparent outline-none" onchange="players[${i}] = this.value.trim();">`;
+                    <input type="text" value="${name}" placeholder="姓名" 
+                           class="flex-1 ml-4 bg-transparent outline-none" 
+                           onchange="players[${i}] = this.value.trim(); if(currentTransfers.length > 0) renderMatrix();">`;
                 grid.appendChild(div);
             });
         }
@@ -91,10 +109,14 @@
             players = Array(12).fill('');
             for (let i = 0; i < Math.min(12, lines.length); i++) players[i] = lines[i];
             renderPlayers();
+            if (currentTransfers.length > 0) renderMatrix();
         }
 
         function clearPlayers() {
-            if (confirm('確定清空全部？')) { players = Array(12).fill(''); renderPlayers(); }
+            if (confirm('確定清空全部？')) { 
+                players = Array(12).fill(''); 
+                renderPlayers(); 
+            }
         }
 
         function renderBids() {
@@ -111,14 +133,23 @@
                     <td><button onclick="deleteBid(${idx})" class="text-red-500">×</button></td>`;
                 tbody.appendChild(row);
             });
-            if (bids.length === 0) tbody.innerHTML = `<tr><td colspan="4" class="py-16 text-center text-zinc-400">請新增結標物品</td></tr>`;
+            if (bids.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="py-16 text-center text-zinc-400">請新增結標物品</td></tr>`;
+            }
         }
 
-        function addBidRow() { bids.push({item:'', winner:players[0]||'', amount:0}); renderBids(); }
-        function deleteBid(idx) { bids.splice(idx,1); renderBids(); }
+        function addBidRow() { 
+            bids.push({item:'', winner:players[0]||'', amount:0}); 
+            renderBids(); 
+        }
+
+        function deleteBid(idx) { 
+            bids.splice(idx,1); 
+            renderBids(); 
+        }
 
         function calculate() {
-            if (players.filter(p => p).length < 12) return alert('請填滿12位玩家');
+            if (players.filter(p => p.trim()).length < 12) return alert('請填滿12位玩家');
             if (bids.length === 0) return alert('請至少新增一筆結標物品');
 
             const total = bids.reduce((s,b)=>s+b.amount,0);
@@ -133,11 +164,10 @@
 
             players.forEach(p => playerData[p].net = Math.round((playerData[p].received - playerData[p].paid)*100)/100);
 
-            // 從平均淨額下手進行簡化（greedy matching）
+            // 從平均淨額簡化
             let positives = players.filter(p => playerData[p].net > 0.01)
                 .map(p => ({name: p, amount: playerData[p].net}))
                 .sort((a,b) => b.amount - a.amount);
-
             let negatives = players.filter(p => playerData[p].net < -0.01)
                 .map(p => ({name: p, amount: -playerData[p].net}))
                 .sort((a,b) => b.amount - a.amount);
@@ -145,8 +175,7 @@
             let transfers = [];
             let i = 0, j = 0;
             while (i < positives.length && j < negatives.length) {
-                let pos = positives[i];
-                let neg = negatives[j];
+                let pos = positives[i], neg = negatives[j];
                 const amt = Math.min(pos.amount, neg.amount);
                 if (Math.round(amt) >= 1) {
                     transfers.push({from: neg.name, to: pos.name, amount: Math.round(amt)});
@@ -179,7 +208,7 @@
 
             let statsHTML = `<table class="w-full"><thead><tr class="bg-zinc-100"><th class="p-4 text-left">玩家</th><th class="p-4 text-right">淨額</th></tr></thead><tbody>`;
             players.forEach(p => {
-                const net = currentPlayerData[p].net;
+                const net = currentPlayerData[p] ? currentPlayerData[p].net : 0;
                 const cls = net > 0 ? 'text-emerald-600' : net < 0 ? 'text-red-600' : '';
                 statsHTML += `<tr><td class="p-4">${p}</td><td class="p-4 text-right font-bold ${cls}">${net}</td></tr>`;
             });
@@ -189,23 +218,35 @@
             renderMatrix();
         }
 
+        // ==================== 關鍵修改：收款人改為下拉選單 ====================
         function renderMatrix() {
             const payers = [...new Set(currentTransfers.map(t => t.from))].sort();
             const receivers = [...new Set(currentTransfers.map(t => t.to))].sort();
 
             let html = `<table class="matrix w-full border-collapse text-base bg-white">`;
-            html += `<thead><tr><th class="text-left pl-6">付款人 \\ 收款人</th>`;
-            receivers.forEach(r => html += `<th>${r}</th>`);
+            html += `<thead><tr><th class="text-left pl-6">付款人</th>`;
+            
+            // 第一行：收款人使用下拉選單
+            receivers.forEach(r => {
+                html += `<th><select onchange="changeReceiverHeader(this, '${r}')" class="w-full text-center font-medium">`;
+                players.forEach(p => {
+                    html += `<option value="${p}" ${p === r ? 'selected' : ''}>${p}</option>`;
+                });
+                html += `</select></th>`;
+            });
+            
             html += `<th class="matrix-total">小計</th></tr></thead><tbody>`;
 
             payers.forEach(payer => {
                 let rowTotal = 0;
-                html += `<tr><th class="text-left pl-6">${payer}</th>`;
+                html += `<tr><th class="text-left pl-6 font-medium">${payer}</th>`;   // 付款人固定
+
                 receivers.forEach(rec => {
                     const found = currentTransfers.find(t => t.from === payer && t.to === rec);
                     const amt = found ? found.amount : 0;
                     rowTotal += amt;
-                    html += `<td><input type="number" value="${amt}" data-from="${payer}" data-to="${rec}" onchange="adjustTransfer(this)" class="${amt===0 ? 'amount-zero' : ''}"></td>`;
+                    html += `<td><input type="number" value="${amt}" data-from="${payer}" data-to="${rec}" 
+                             onchange="adjustTransfer(this)" class="${amt===0 ? 'amount-zero' : ''}"></td>`;
                 });
                 html += `<td class="matrix-total">${rowTotal}</td></tr>`;
             });
@@ -213,20 +254,39 @@
             document.getElementById('matrix-container').innerHTML = html;
         }
 
+        // 更改第一行收款人標題時，更新所有對應的轉帳
+        function changeReceiverHeader(select, oldReceiver) {
+            const newReceiver = select.value;
+            if (newReceiver === oldReceiver) return;
+
+            // 更新所有轉給 oldReceiver 的記錄
+            currentTransfers.forEach(t => {
+                if (t.to === oldReceiver) {
+                    t.to = newReceiver;
+                }
+            });
+
+            renderMatrix();
+        }
+
         function adjustTransfer(input) {
             const from = input.dataset.from;
             const to = input.dataset.to;
             const newAmt = parseFloat(input.value) || 0;
+
             let found = currentTransfers.find(t => t.from === from && t.to === to);
-            if (found) found.amount = newAmt;
-            else if (newAmt > 0) currentTransfers.push({from, to, amount: newAmt});
+            if (found) {
+                found.amount = newAmt;
+            } else if (newAmt > 0) {
+                currentTransfers.push({from, to, amount: newAmt});
+            }
             renderMatrix();
         }
 
         function simplifyDebts() {
             if (currentTransfers.length === 0) return alert('請先點擊「開始計算分帳」');
-            calculate(); // 重新從平均淨額執行簡化
-            document.getElementById('transfer-note').innerHTML = `✅ 已從平均淨額進行進階簡化！<br>系統優先把欠錢最多的人與該拿錢最多的人配對，盡量減少轉帳筆數。<br>你可以繼續手動調整矩陣中的數字。`;
+            calculate();
+            document.getElementById('transfer-note').innerHTML = `✅ 已從平均淨額進行進階簡化！<br>第一行收款人可透過下拉選單調整。`;
         }
 
         function resetMatrix() {
